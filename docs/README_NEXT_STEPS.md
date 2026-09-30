@@ -211,13 +211,14 @@ journey. It collects Compose logs after a failed step and always attempts
 stack teardown. It waits for the lint/build, Compose-validation, and ETL jobs
 to complete first so this memory-intensive stage does not overlap them.
 
-**First hosted-run result:** the prerequisite jobs passed, then the integration
-job correctly stopped at the users image build because its Dockerfile did not
-copy root `turbo.json` into the build image. The root config is now included in
-all six Node service Docker build contexts. The next hosted run must verify the
-image builds, live contract probe, and order journey end to end. Image builds
-are intentionally sequential; no additional parallel build load is
-introduced.
+**First hosted-run findings:** the prerequisite jobs passed, then the users
+image exposed two clean-build assumptions: Turbo needs the root `turbo.json`
+inside the build context, and Prisma generation needs a `DATABASE_URL` during
+the image build. The root Turbo config is now copied into all six Node service
+build contexts; the five Prisma service builder stages also set a non-secret
+placeholder URL that is not present in the final runtime stages. The next
+hosted run must verify all image builds, the live contract probe, and the order
+journey end to end. Image builds are intentionally sequential.
 
 The `deepmerge-ts` alert is addressed by a scoped pnpm override for
 `@prisma/config`, selecting patched `deepmerge-ts` 8.0.2 while keeping the

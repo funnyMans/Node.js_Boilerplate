@@ -5,6 +5,7 @@ RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
 
 WORKDIR /app
 ENV CI=true
+ENV DATABASE_URL=postgresql://ci:ci@127.0.0.1:5432/app
 
 # Copy only manifest files first for layer caching
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json turbo.json ./

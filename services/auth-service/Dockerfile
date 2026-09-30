@@ -1,6 +1,7 @@
 FROM node:24.20 AS builder
 RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
 WORKDIR /app
+ENV DATABASE_URL=postgresql://ci:ci@127.0.0.1:5432/app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json turbo.json ./
 COPY packages/common/package.json packages/common/package.json
