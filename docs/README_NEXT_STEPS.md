@@ -194,11 +194,13 @@ failure.
 pull requests, and manual dispatch. It installs from the frozen pnpm lockfile,
 checks workflow formatting, builds the workspace, then runs lint and unit
 tests. Building first also generates the workspace declarations and Prisma
-clients required by lint's import resolver on a clean runner. A separate
-lightweight job validates the development and E2E Compose configurations
-without building images or starting containers. This is the initial gate, not
-proof that the live service contracts or order journey pass on a clean CI
-runner.
+clients required by lint's import resolver on a clean runner. The build gets a
+CI-only placeholder `DATABASE_URL` so Prisma configuration and client
+generation work without a running database; the build does not connect to it.
+A separate lightweight job validates the development and E2E Compose
+configurations without building images or starting containers. This is the
+initial gate, not proof that the live service contracts or order journey pass
+on a clean CI runner.
 
 **Still to stage:** ETL tests, running service-contract probes, and the
 end-to-end order journey need dedicated jobs and their required dependencies.
