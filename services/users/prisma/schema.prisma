@@ -1,0 +1,19 @@
+// Base Prisma config (generator + datasource). This file is intended to be
+// concatenated with model files under prisma/models/*.prisma to produce the
+// final `prisma/schema.prisma` that the Prisma CLI consumes.
+
+generator client {
+  provider = "prisma-client-js"
+  // Generated Prisma client lives at the service root, not inside src/
+  output = "../generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  // DATABASE_URL is provided via environment variables at runtime
+}
+
+// model files live under prisma/models/*.prisma and are concatenated by
+// `pnpm run prisma:build` before invoking Prisma CLI.
+
+

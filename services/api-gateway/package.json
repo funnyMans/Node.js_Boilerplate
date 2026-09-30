@@ -1,0 +1,21 @@
+{
+  "name": "service-api-gateway",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "prebuild": "pnpm run clean",
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "test:e2e": "cd ../.. && E2E=1 pnpm exec vitest run services/api-gateway/tests/e2e/auth.e2e.test.ts"
+  },
+  "dependencies": {
+    "@app/common": "workspace:*",
+    "@app/contracts": "workspace:*",
+    "@nodejs-boilerplate/common-infra": "workspace:*",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.12.1",
+    "prom-client": "^15.1.3"
+  }
+}

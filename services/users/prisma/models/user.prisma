@@ -1,0 +1,19 @@
+enum UserStatus {
+  active
+  blocked
+  deleted
+}
+
+model User {
+  id        String      @id @default(uuid())
+  email     String      @unique
+  firstName String?
+  lastName  String?
+  isActive  Boolean     @default(true)
+  status    UserStatus  @default(active)
+  deletedAt DateTime?
+  createdAt DateTime    @default(now()) @map("createdat")
+  updatedAt DateTime    @updatedAt @map("updatedat")
+
+  @@map("User")
+}

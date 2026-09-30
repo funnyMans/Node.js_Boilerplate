@@ -1,0 +1,41 @@
+{
+  "name": "orders-service",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "pnpm exec prisma generate",
+    "dev": "tsx watch src/server.ts",
+    "prestart": "pnpm exec prisma generate",
+    "start": "node dist/server.js",
+    "prebuild": "pnpm run clean && pnpm exec prisma generate",
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "prisma:generate": "pnpm exec prisma generate",
+    "prisma:migrate": "pnpm exec prisma migrate dev",
+    "prisma:deploy": "pnpm exec prisma migrate deploy"
+  },
+  "dependencies": {
+    "@app/common": "workspace:*",
+    "@app/contracts": "workspace:*",
+    "@aws-sdk/client-s3": "^3.1123.0",
+    "@nodejs-boilerplate/common-infra": "workspace:*",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "7.10.0",
+    "@prisma/client-runtime-utils": "7.10.0",
+    "@temporalio/activity": "^1.23.0",
+    "@temporalio/client": "^1.23.0",
+    "@temporalio/common": "^1.23.0",
+    "@temporalio/worker": "^1.23.0",
+    "@temporalio/workflow": "^1.23.0",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.12.1",
+    "pg": "^8.23.0",
+    "prom-client": "^15.1.3",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "prisma": "7.10.0",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.3"
+  }
+}

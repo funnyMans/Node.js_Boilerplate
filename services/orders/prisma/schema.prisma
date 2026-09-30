@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  FULFILLED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  FAILED
+}
+
+model Order {
+  id        String      @id @default(uuid()) @db.Uuid
+  userId    String      @map("user_id")
+  status    OrderStatus @default(PENDING)
+  items     OrderItem[]
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@index([userId, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String @id @default(uuid()) @db.Uuid
+  orderId   String @map("order_id") @db.Uuid
+  productId String @map("product_id")
+  quantity  Int
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+}
+
+model OutboxEvent {
+  id                   String       @id @default(uuid()) @db.Uuid
+  subject              String
+  payload              Json
+  traceContext         Json?        @map("trace_context")
+  status               OutboxStatus @default(PENDING)
+  attempts             Int          @default(0)
+  availableAt          DateTime     @default(now()) @map("available_at")
+  lockedUntil          DateTime?    @map("locked_until")
+  lastError            String?      @map("last_error")
+  createdAt            DateTime     @default(now()) @map("created_at")
+  publishedAt          DateTime?    @map("published_at")
+  workflowAttempts     Int          @default(0) @map("workflow_attempts")
+  workflowAvailableAt  DateTime     @default(now()) @map("workflow_available_at")
+  workflowLockedUntil  DateTime?    @map("workflow_locked_until")
+  workflowLastError    String?      @map("workflow_last_error")
+  workflowStartedAt    DateTime?    @map("workflow_started_at")
+  workflowFailedAt     DateTime?    @map("workflow_failed_at")
+  rawExportAttempts    Int          @default(0) @map("raw_export_attempts")
+  rawExportAvailableAt DateTime     @default(now()) @map("raw_export_available_at")
+  rawExportLockedUntil DateTime?    @map("raw_export_locked_until")
+  rawExportLastError   String?      @map("raw_export_last_error")
+  rawExportedAt        DateTime?    @map("raw_exported_at")
+  rawExportFailedAt    DateTime?    @map("raw_export_failed_at")
+
+  @@index([status, availableAt, createdAt])
+  @@index([status, workflowAvailableAt, createdAt])
+  @@index([subject, rawExportedAt, rawExportAvailableAt, createdAt])
+  @@map("outbox_events")
+}

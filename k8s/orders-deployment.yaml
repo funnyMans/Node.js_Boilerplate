@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  namespace: node-boilerplate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels:
+        app: orders
+    spec:
+      containers:
+        - name: orders
+          image: node-boilerplate/orders:dev
+          command:
+            [
+              'sh',
+              '-c',
+              'cd services/orders && pnpm exec prisma migrate deploy && node dist/server.js',
+            ]
+          ports:
+            - containerPort: 3003
+          env:
+            - name: PORT
+              value: '3003'
+            - name: HOST
+              value: '0.0.0.0'
+            - name: DATABASE_URL
+              value: 'postgresql://dev:dev@postgres:5432/orders'
+            - name: NATS_URL
+              value: 'nats://nats:4222'
+            - name: TEMPORAL_ADDRESS
+              value: 'temporal:7233'
+            - name: TEMPORAL_TASK_QUEUE
+              value: 'orders-fulfillment'
+            - name: PAYMENT_SERVICE_URL
+              value: 'http://payments:3010'
+            - name: INVENTORY_SERVICE_URL
+              value: 'http://inventory:3011'
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3003
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3003
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: '100m'
+              memory: '128Mi'
+            limits:
+              cpu: '500m'
+              memory: '512Mi'

@@ -1,0 +1,32 @@
+{
+  "name": "auth-service",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "pnpm exec prisma generate",
+    "dev": "tsx watch src/server.ts",
+    "prebuild": "pnpm run clean && pnpm exec prisma generate",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "prisma:generate": "pnpm exec prisma generate",
+    "prisma:migrate": "pnpm exec prisma migrate dev"
+  },
+  "dependencies": {
+    "@app/common": "workspace:*",
+    "@app/contracts": "workspace:*",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "@prisma/client-runtime-utils": "7.10.0",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.12.1",
+    "pg": "^8.23.0",
+    "prom-client": "^15.1.3",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "prisma": "^7.10.0",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.3"
+  }
+}

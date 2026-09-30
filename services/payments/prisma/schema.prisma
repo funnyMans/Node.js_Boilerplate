@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PaymentStatus {
+  PENDING
+  CHARGED
+  DECLINED
+  REFUND_PENDING
+  REFUNDED
+}
+
+model CatalogProduct {
+  id          String   @id
+  name        String
+  amountCents Int      @map("amount_cents")
+  currency    String   @default("usd") @db.VarChar(3)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("catalog_products")
+}
+
+model PaymentCustomer {
+  userId                    String   @id @map("user_id")
+  stripeCustomerId          String   @unique @map("stripe_customer_id")
+  defaultPaymentMethodId    String?  @map("default_payment_method_id")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  @@map("payment_customers")
+}
+
+model OrderPayment {
+  id                    String        @id @default(uuid()) @db.Uuid
+  orderId               String        @unique @map("order_id")
+  userId                String        @map("user_id")
+  amountCents           Int           @map("amount_cents")
+  currency              String        @db.VarChar(3)
+  requestFingerprint    String        @map("request_fingerprint")
+  status                PaymentStatus @default(PENDING)
+  stripePaymentIntentId String?       @unique @map("stripe_payment_intent_id")
+  stripeRefundId        String?       @unique @map("stripe_refund_id")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  @@index([userId, createdAt])
+  @@map("order_payments")
+}

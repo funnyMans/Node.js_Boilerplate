@@ -1,0 +1,31 @@
+enum AuthRole {
+  user
+  admin
+}
+
+model Credential {
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  email        String    @unique
+  passwordHash String
+  role         AuthRole  @default(user)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+}
+
+model Session {
+  id               String     @id @default(uuid())
+  tokenHash        String     @unique
+  refreshTokenHash String     @unique
+  credentialId     String
+  expiresAt        DateTime
+  refreshExpiresAt  DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime   @default(now())
+  credential       Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+  @@index([credentialId])
+  @@index([expiresAt])
+  @@index([refreshExpiresAt])
+}

@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Product {
+  id           String              @id
+  stock        Int
+  reservations ReservationItem[]
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  @@map("products")
+}
+
+model Reservation {
+  id        String              @id @default(uuid()) @db.Uuid
+  orderId   String              @unique @map("order_id")
+  items     ReservationItem[]
+  createdAt DateTime            @default(now()) @map("created_at")
+
+  @@map("reservations")
+}
+
+model ReservationItem {
+  id            String      @id @default(uuid()) @db.Uuid
+  reservationId String      @map("reservation_id") @db.Uuid
+  productId     String      @map("product_id")
+  quantity      Int
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  product       Product     @relation(fields: [productId], references: [id])
+
+  @@unique([reservationId, productId])
+  @@map("reservation_items")
+}
+
+model StockAdjustment {
+  id             String   @id @default(uuid()) @db.Uuid
+  idempotencyKey String   @unique @map("idempotency_key")
+  productId      String   @map("product_id")
+  quantity       Int
+  requestPayload Json     @map("request_payload")
+  result         Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("stock_adjustments")
+}

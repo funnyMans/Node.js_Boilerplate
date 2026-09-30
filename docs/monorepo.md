@@ -46,7 +46,21 @@ Each service under `services/<service>/` should look like this:
 
 - Prisma clients are generated into a service-local output folder such as `generated/`
 - Do not keep generated client output under `src/`
-- Ensure `prebuild`/`predev` scripts generate Prisma before TypeScript compilation
+- Ensure each service's `prebuild`/`predev` scripts generate its own Prisma client
+
+## Workspace build orchestration
+
+- Run builds through the root `pnpm build` command so Turbo builds shared
+  workspace dependencies before dependent services.
+- Service lifecycle hooks may clean that service's output and generate its own
+  Prisma client, but must not recursively build shared workspace packages.
+  Turbo owns dependency ordering; recursive package builds can race by deleting
+  shared `dist/` output while another service is compiling.
+- Docker builder stages use `pnpm exec turbo run build --filter=<service>...`
+  to build the selected service together with its workspace dependencies.
+- `pnpm dev` uses the same dependency graph for shared packages before starting
+  service watchers. Running a service package script directly assumes its
+  workspace dependencies have already been built.
 
 ## Test placement
 
