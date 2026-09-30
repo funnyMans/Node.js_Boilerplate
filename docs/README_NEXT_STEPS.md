@@ -211,14 +211,22 @@ journey. It collects Compose logs after a failed step and always attempts
 stack teardown. It waits for the lint/build, Compose-validation, and ETL jobs
 to complete first so this memory-intensive stage does not overlap them.
 
-**First hosted-run findings:** the prerequisite jobs passed, then the users
-image exposed two clean-build assumptions: Turbo needs the root `turbo.json`
-inside the build context, and Prisma generation needs a `DATABASE_URL` during
-the image build. The root Turbo config is now copied into all six Node service
-build contexts; the five Prisma service builder stages also set a non-secret
-placeholder URL that is not present in the final runtime stages. The next
-hosted run must verify all image builds, the live contract probe, and the order
-journey end to end. Image builds are intentionally sequential.
+**Verified 2026-09-30:** the initial hosted integration attempts caught and
+fixed two clean-build assumptions: Turbo needs root `turbo.json` inside each
+Node service build context, and Prisma generation needs `DATABASE_URL` during
+image build. All six Node Dockerfiles now copy `turbo.json`; the five Prisma
+builder stages use a non-secret placeholder URL that is absent from the final
+runtime stages. The successful hosted run then built all six HTTP images and
+the shared ETL/Moto image in separate sequential steps, started the E2E
+dependency graph with `--no-build --wait`, passed the six-service contract
+probe, seeded the S3 mock, and passed the authenticated order journey. The
+failure-log collection and teardown steps also completed as configured. See
+the [successful GitHub Actions run](https://github.com/funnyMans/Node.js_Boilerplate/actions/runs/36764059658).
+
+This proves the local operator contract and order-journey commands on a clean
+hosted runner. It does not build images in parallel or start optional Dagster,
+Prometheus, Grafana, Nginx, or the OTel collector as part of the integration
+job.
 
 The `deepmerge-ts` alert is addressed by a scoped pnpm override for
 `@prisma/config`, selecting patched `deepmerge-ts` 8.0.2 while keeping the
