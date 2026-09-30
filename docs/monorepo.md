@@ -1,0 +1,64 @@
+# Monorepo & Service Structure
+
+This repository follows a DDD-first service layout and keeps generated artifacts out of `src/`.
+
+## Root conventions
+
+- `package.json` — workspace-level scripts and dependency management
+- `pnpm-workspace.yaml` — workspace membership
+- `tsconfig.base.json` — shared TypeScript compiler settings
+- `eslint.config.mjs` — single active lint configuration
+- `docs/` — architecture and project documentation
+- `infra/` — runtime infrastructure and compose files
+
+## Shared packages
+
+- `packages/common/` — shared logger, tracing, health, config, and bootstrap helpers
+- `packages/common-infra/` — Redis, NATS, Temporal, and broker abstractions
+- `packages/contracts/` — DTOs, event shapes, validation contracts, and shared typing
+
+## Canonical service template
+
+Each service under `services/<service>/` should look like this:
+
+- `package.json`
+- `Dockerfile`
+- `tsconfig.json`
+- `prisma/schema.prisma`
+- `src/server.ts` — process entry point
+- `src/bootstrap.ts` — app assembly and dependency wiring
+- `src/domain/` — entities, value objects, and domain rules
+- `src/app/` — use cases, commands, queries, and orchestration
+- `src/infrastructure/` — DB, config, clients, security, metrics, and external adapters
+- `src/interfaces/http/` — controllers, routes, and request/response handling
+- `tests/` — unit and integration tests
+
+## DDD rules
+
+- `domain/` owns business language and invariants
+- `app/` owns orchestration and use cases
+- `infrastructure/` owns adapters and external dependencies
+- `interfaces/http/` owns transport concerns only
+- `bootstrap.ts` is the single assembly point for each service
+- `server.ts` is always the runtime entrypoint for the process
+
+## Generated client rules
+
+- Prisma clients are generated into a service-local output folder such as `generated/`
+- Do not keep generated client output under `src/`
+- Ensure `prebuild`/`predev` scripts generate Prisma before TypeScript compilation
+
+## Test placement
+
+- Keep all service tests under `services/<service>/tests/`
+- Use `*.test.ts` naming for unit and integration coverage
+- Keep infrastructure or environment-specific checks separated by purpose
+
+## Standardization checklist
+
+- One runtime server entrypoint per service
+- One bootstrap assembly entrypoint per service
+- One config module per service
+- One Prisma schema per service
+- One generated Prisma client location per service
+- No stale `index.ts` launchers for service runtimes

@@ -1,0 +1,38 @@
+sequenceDiagram
+  actor C as Client
+  participant G as Nginx / API Gateway
+  participant A as Auth Service
+  participant O as Orders Service
+  participant DB as PostgreSQL
+  participant N as NATS
+  participant T as Temporal
+  participant P as Payments Service
+  participant I as Inventory Service
+  participant S as Moto S3
+  participant D as Dagster
+
+  C->>G: POST /orders
+  G->>A: validate caller
+  A-->>G: authenticated identity
+  G->>O: forward request and identity
+  O->>DB: insert order and outbox event in one transaction
+  DB-->>O: commit
+  O-->>C: order response
+
+  par NATS publication
+    O->>DB: claim pending event
+    O->>N: publish and flush
+    O->>DB: mark published
+  and Raw data export
+    O->>S: write deterministic JSONL object
+    O->>DB: record export result
+  and Workflow dispatch
+    O->>T: start deterministic workflow
+  end
+
+  T->>O: run workflow activities
+  O->>P: charge or refund over HTTP
+  O->>I: reserve inventory over HTTP
+  T->>O: confirm or cancel order
+  D->>S: read raw events
+  D->>S: write curated Parquet

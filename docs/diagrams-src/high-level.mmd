@@ -1,0 +1,39 @@
+flowchart LR
+  Client --> Nginx["Nginx :8080"]
+  Nginx --> Gateway["API gateway :3000"]
+  Nginx --> Users["Users :3001"]
+  Gateway --> Auth["Auth service :3002"]
+  Gateway --> Users
+  Gateway --> Orders["Orders :3003"]
+  Orders --> Payments["Payments :3010"]
+  Orders --> Inventory["Inventory :3011"]
+
+  Postgres[(PostgreSQL)] --> Users
+  Postgres --> Auth
+  Postgres --> Orders
+  Postgres --> Payments
+  Postgres --> Inventory
+  Gateway --> Redis[(Redis)]
+  Users --> Redis
+  Orders --> NATS[(NATS)]
+  Gateway --> NATS
+  Orders --> Temporal["Temporal :7233"]
+
+  Init["s3-mock-init (one-shot)"] --> S3["Moto S3 mock :9000"]
+  Orders -->|raw event export| S3
+  Dagster["Dagster :3004"] -->|read raw / write curated| S3
+
+  Gateway -. "/metrics" .-> Prometheus["Prometheus :9090"]
+  Users -. "/metrics" .-> Prometheus
+  Auth -. "/metrics" .-> Prometheus
+  Orders -. "/metrics" .-> Prometheus
+  Payments -. "/metrics" .-> Prometheus
+  Inventory -. "/metrics" .-> Prometheus
+  Prometheus --> Grafana["Grafana :3005"]
+  Gateway -. "OTLP/HTTP traces" .-> OTel["OTel collector :4318"]
+  Users -. "OTLP/HTTP traces" .-> OTel
+  Auth -. "OTLP/HTTP traces" .-> OTel
+  Orders -. "OTLP/HTTP traces" .-> OTel
+  Payments -. "OTLP/HTTP traces" .-> OTel
+  Inventory -. "OTLP/HTTP traces" .-> OTel
+  Orders -. "outbox backlog/age gauges" .-> Prometheus

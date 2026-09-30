@@ -1,0 +1,6 @@
+flowchart LR
+  Outbox["orders.order.created event"] --> Raw["raw/orders/.../*.jsonl"]
+  Seed["s3-mock-init sample event"] --> Raw
+  Raw --> Validate["Dagster: validate and deduplicate"]
+  Validate --> Flatten["One row per order item"]
+  Flatten --> Parquet["curated/orders/created_date=YYYY-MM-DD/orders.parquet"]
