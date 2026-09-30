@@ -203,10 +203,19 @@ initial gate, not proof that the live service contracts or order journey pass
 on a clean CI runner. A dedicated Python 3.12 job installs the ETL requirements
 and runs the ETL unit tests independently.
 
-**Still to stage:** running service-contract probes and the end-to-end order
-journey need dedicated jobs and their required dependencies. Container image
-builds remain deferred until they can be run sequentially or with an explicit
-resource limit.
+**Integration stage added:** a dependent job builds the six HTTP images and
+the shared ETL image in separate sequential steps, starts the gateway and its
+Compose dependency graph with `--no-build --wait`, runs the six-service
+contract probe, seeds the E2E S3 mock, and runs the authenticated order
+journey. It collects Compose logs after a failed step and always attempts
+stack teardown. It waits for the lint/build, Compose-validation, and ETL jobs
+to complete first so this memory-intensive stage does not overlap them.
+
+**Verification still pending:** wait for a GitHub Actions run of this workflow
+revision. The first run will prove whether each image builds on a clean hosted
+runner and whether the existing live contract/journey commands work there.
+Image builds are intentionally sequential; no additional parallel build load
+is introduced.
 
 The `deepmerge-ts` alert is addressed by a scoped pnpm override for
 `@prisma/config`, selecting patched `deepmerge-ts` 8.0.2 while keeping the

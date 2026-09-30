@@ -87,3 +87,84 @@ jobs:
       - name: Run ETL unit tests
         working-directory: services/etl
         run: python -m unittest discover -s tests -v
+
+  compose-integration:
+    name: Compose service contract and order journey
+    needs:
+      - validate-and-build
+      - compose-validation
+      - etl-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/app
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build users image
+        run: docker compose -f infra/docker-compose.dev.yml build users
+
+      - name: Build auth-service image
+        run: docker compose -f infra/docker-compose.dev.yml build auth-service
+
+      - name: Build orders image
+        run: docker compose -f infra/docker-compose.dev.yml build orders
+
+      - name: Build payments image
+        run: docker compose -f infra/docker-compose.dev.yml build payments
+
+      - name: Build inventory image
+        run: docker compose -f infra/docker-compose.dev.yml build inventory
+
+      - name: Build API gateway image
+        run: docker compose -f infra/docker-compose.dev.yml build api-gateway
+
+      - name: Build ETL image
+        run: docker compose -f infra/docker-compose.dev.yml build dagster
+
+      - name: Start integration dependencies and HTTP services
+        run: >-
+          docker compose
+          -f infra/docker-compose.dev.yml
+          -f infra/docker-compose.e2e.yml
+          up -d --no-build --wait --wait-timeout 600 api-gateway
+
+      - name: Probe all service contracts
+        run: pnpm docker:service-contract
+
+      - name: Seed the E2E S3 mock
+        run: pnpm docker:e2e-seed
+
+      - name: Run authenticated order journey
+        run: pnpm docker:order-journey
+
+      - name: Collect Compose logs after failure
+        if: failure()
+        run: >-
+          docker compose
+          -f infra/docker-compose.dev.yml
+          -f infra/docker-compose.e2e.yml
+          logs --no-color --tail=200
+
+      - name: Stop integration stack
+        if: always()
+        run: >-
+          docker compose
+          -f infra/docker-compose.dev.yml
+          -f infra/docker-compose.e2e.yml
+          down --remove-orphans
