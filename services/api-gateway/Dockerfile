@@ -6,7 +6,7 @@ RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
 WORKDIR /app
 
 # Copy only manifest files first for layer caching
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json turbo.json ./
 # Copy workspace package.json files into their expected paths (preserve structure)
 COPY packages/common/package.json packages/common/package.json
 COPY packages/common-infra/package.json packages/common-infra/package.json

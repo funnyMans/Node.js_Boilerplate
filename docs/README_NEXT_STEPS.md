@@ -211,11 +211,13 @@ journey. It collects Compose logs after a failed step and always attempts
 stack teardown. It waits for the lint/build, Compose-validation, and ETL jobs
 to complete first so this memory-intensive stage does not overlap them.
 
-**Verification still pending:** wait for a GitHub Actions run of this workflow
-revision. The first run will prove whether each image builds on a clean hosted
-runner and whether the existing live contract/journey commands work there.
-Image builds are intentionally sequential; no additional parallel build load
-is introduced.
+**First hosted-run result:** the prerequisite jobs passed, then the integration
+job correctly stopped at the users image build because its Dockerfile did not
+copy root `turbo.json` into the build image. The root config is now included in
+all six Node service Docker build contexts. The next hosted run must verify the
+image builds, live contract probe, and order journey end to end. Image builds
+are intentionally sequential; no additional parallel build load is
+introduced.
 
 The `deepmerge-ts` alert is addressed by a scoped pnpm override for
 `@prisma/config`, selecting patched `deepmerge-ts` 8.0.2 while keeping the

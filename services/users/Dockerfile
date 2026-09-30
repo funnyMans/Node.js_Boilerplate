@@ -7,7 +7,7 @@ WORKDIR /app
 ENV CI=true
 
 # Copy only manifest files first for layer caching
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json turbo.json ./
 # Copy workspace package.json files into their expected paths (preserve structure)
 COPY packages/common/package.json packages/common/package.json
 COPY packages/common-infra/package.json packages/common-infra/package.json
