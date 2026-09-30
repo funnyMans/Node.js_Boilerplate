@@ -208,13 +208,19 @@ journey need dedicated jobs and their required dependencies. Container image
 builds remain deferred until they can be run sequentially or with an explicit
 resource limit.
 
-The remaining high Dependabot alert is `deepmerge-ts`, currently pulled in as
-7.1.5 by Prisma 7.10.0; the patched dependency is 8.0.0. Registry metadata
-currently exposes Prisma 8 as `8.0.0-rc.19`, and the corresponding
-`@prisma/client` version is not available under that exact version. Do not
-replace the stable Prisma 7 dependencies with an unverified prerelease; first
-confirm a matching Prisma/client release and test the migration as its own
-compatibility change.
+The `deepmerge-ts` alert is addressed by a scoped pnpm override for
+`@prisma/config`, selecting patched `deepmerge-ts` 8.0.2 while keeping the
+Prisma 7.10.0 CLI and client unchanged. A frozen install, forced full workspace
+build (including Prisma client generation), lint, and all 80 unit tests passed
+with that override. The alert status should be checked again on GitHub after
+the dependency commit is pushed.
+
+Prisma 8 remains a separate compatibility migration. Registry metadata lists
+`prisma` 8.0.0-rc.19 as latest, but `@prisma/client` remains at 7.10.0 and
+returns 404 for 8.0.0-rc.19. Do not mix the CLI prerelease with the v7 client;
+start the major migration once Prisma publishes matching packages, then test
+all five service schemas, adapters, migrations, Docker builds, and integration
+journeys as a dedicated change.
 
 **Done when:** a clean CI run proves the same contracts and critical journey
 used by the local operator procedure.
