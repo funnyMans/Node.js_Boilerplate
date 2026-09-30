@@ -192,11 +192,13 @@ failure.
 
 **First CI slice added:** `.github/workflows/ci.yml` runs on pushes to `main`,
 pull requests, and manual dispatch. It installs from the frozen pnpm lockfile,
-checks workflow formatting, runs lint and unit tests, and builds the workspace.
-A separate lightweight job validates the development and E2E Compose
-configurations without building images or starting containers. This is the
-initial gate, not proof that the live service contracts or order journey pass
-on a clean CI runner.
+checks workflow formatting, builds the workspace, then runs lint and unit
+tests. Building first also generates the workspace declarations and Prisma
+clients required by lint's import resolver on a clean runner. A separate
+lightweight job validates the development and E2E Compose configurations
+without building images or starting containers. This is the initial gate, not
+proof that the live service contracts or order journey pass on a clean CI
+runner.
 
 **Still to stage:** ETL tests, running service-contract probes, and the
 end-to-end order journey need dedicated jobs and their required dependencies.
