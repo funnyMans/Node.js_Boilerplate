@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "noEmit": true,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["**/*.ts", "**/*.js", "**/*.mjs", "**/*.cjs", "eslint.config.mjs"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "**/*.d.ts",
+    "**/*.tsbuildinfo",
+    "**/generated/**",
+    "**/.next/**",
+    "charts/**",
+    "k8s/**",
+    "infra/**"
+  ]
+}

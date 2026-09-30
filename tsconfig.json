@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "./packages/common" },
+    { "path": "./packages/common-infra" },
+    { "path": "./packages/contracts" },
+    { "path": "./services/api-gateway" },
+    { "path": "./services/auth-service" },
+    { "path": "./services/users" }
+  ]
+}

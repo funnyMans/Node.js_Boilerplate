@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.turbo
+**/.turbo
+.env
+**/.env
+**/.env.*
+docs/images
+.git
+.prisma
+**/__pycache__
+**/*.py[cod]
+**/.venv
+**/.pytest_cache
+**/.mypy_cache
