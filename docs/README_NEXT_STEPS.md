@@ -190,6 +190,19 @@ Keep memory-heavy image builds sequential or otherwise explicitly resource
 bounded, and report the failing service/stage rather than only a generic job
 failure.
 
+**First CI slice added:** `.github/workflows/ci.yml` runs on pushes to `main`,
+pull requests, and manual dispatch. It installs from the frozen pnpm lockfile,
+checks workflow formatting, runs lint and unit tests, and builds the workspace.
+A separate lightweight job validates the development and E2E Compose
+configurations without building images or starting containers. This is the
+initial gate, not proof that the live service contracts or order journey pass
+on a clean CI runner.
+
+**Still to stage:** ETL tests, running service-contract probes, and the
+end-to-end order journey need dedicated jobs and their required dependencies.
+Container image builds remain deferred until they can be run sequentially or
+with an explicit resource limit.
+
 **Done when:** a clean CI run proves the same contracts and critical journey
 used by the local operator procedure.
 
