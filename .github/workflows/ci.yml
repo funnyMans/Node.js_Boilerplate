@@ -64,3 +64,26 @@ jobs:
 
       - name: Validate E2E Compose configuration
         run: docker compose -f infra/docker-compose.dev.yml -f infra/docker-compose.e2e.yml config --quiet
+
+  etl-tests:
+    name: ETL unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/etl/requirements.txt
+
+      - name: Install ETL dependencies
+        working-directory: services/etl
+        run: python -m pip install -r requirements.txt
+
+      - name: Run ETL unit tests
+        working-directory: services/etl
+        run: python -m unittest discover -s tests -v

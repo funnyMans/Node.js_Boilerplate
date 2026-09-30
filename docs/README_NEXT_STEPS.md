@@ -200,12 +200,21 @@ generation work without a running database; the build does not connect to it.
 A separate lightweight job validates the development and E2E Compose
 configurations without building images or starting containers. This is the
 initial gate, not proof that the live service contracts or order journey pass
-on a clean CI runner.
+on a clean CI runner. A dedicated Python 3.12 job installs the ETL requirements
+and runs the ETL unit tests independently.
 
-**Still to stage:** ETL tests, running service-contract probes, and the
-end-to-end order journey need dedicated jobs and their required dependencies.
-Container image builds remain deferred until they can be run sequentially or
-with an explicit resource limit.
+**Still to stage:** running service-contract probes and the end-to-end order
+journey need dedicated jobs and their required dependencies. Container image
+builds remain deferred until they can be run sequentially or with an explicit
+resource limit.
+
+The remaining high Dependabot alert is `deepmerge-ts`, currently pulled in as
+7.1.5 by Prisma 7.10.0; the patched dependency is 8.0.0. Registry metadata
+currently exposes Prisma 8 as `8.0.0-rc.19`, and the corresponding
+`@prisma/client` version is not available under that exact version. Do not
+replace the stable Prisma 7 dependencies with an unverified prerelease; first
+confirm a matching Prisma/client release and test the migration as its own
+compatibility change.
 
 **Done when:** a clean CI run proves the same contracts and critical journey
 used by the local operator procedure.
