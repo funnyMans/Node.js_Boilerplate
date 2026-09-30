@@ -22,18 +22,24 @@ feature/*, fix/*, chore/* ── pull request ──> dev
   treat it as a deployment target.
 - Promote a verified candidate from `stage` to `main` with a pull request.
   `main` is the stable, production-designated branch.
+- Merge ordinary feature/fix/maintenance PRs with squash. Merge promotion PRs
+  (`dev` -> `stage`, `stage` -> `main`) with a merge commit so the source
+  commits remain ancestors of the destination and later promotions contain
+  only new work.
 - If a release-candidate-only fix is needed, make a focused fix branch from
-  `stage`, merge it into `stage`, then bring the same fix back into `dev`
-  before the next promotion.
+  `stage`, merge it into `stage`, then merge `stage` back into `dev` before
+  the next promotion so the tested branch histories remain aligned.
 - For an urgent production-line fix, branch from `main`, open a pull request
-  to `main`, and then forward-merge that fix into `stage` and `dev`.
+  to `main`, and then merge `main` into `stage` and `dev` to forward-port the
+  fix while preserving ancestry.
 - Do not push directly to `main`, `stage`, or `dev`, or force-push them.
 
 GitHub protects the three integration branches with required pull requests,
-linear history, resolved review conversations, and all required CI checks.
-Approving reviews are not currently required because the repository has one
-maintainer; add a second maintainer and enable required approval before
-accepting outside contributions that need independent review.
+resolved review conversations, and all required CI checks. Promotion merge
+commits are enabled to preserve GitFlow ancestry. Approving reviews are not
+currently required because the repository has one maintainer; add a second
+maintainer and enable required approval before accepting outside contributions
+that need independent review.
 
 ## Pull request requirements
 
@@ -49,8 +55,9 @@ accepting outside contributions that need independent review.
   roadmap status in the same pull request.
 - Never include `.env` files, credentials, generated clients, caches, or
   machine-specific configuration.
-- Merge with squash so each integration branch receives a focused commit;
-  delete the source branch after merging.
+- Merge feature/fix/maintenance PRs with squash. Use a merge commit for
+  branch promotions and forward/back-merges; do not squash those PRs. Delete
+  merged feature branches after merging.
 
 ## Local validation
 

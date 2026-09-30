@@ -252,10 +252,12 @@ production delivery remains deferred.
 The repository uses `main` as its stable default branch, with protected
 `stage` and `dev` branches for release candidates and ongoing development.
 Normal feature/fix branches target `dev`; promotion pull requests advance
-`dev` to `stage`, then `stage` to `main`. Branch protections require pull
-requests, linear history, resolved review threads, and all successful CI
-checks. The repository currently has one maintainer, so approving reviews are
-not required until an independent reviewer is added. See
+`dev` to `stage`, then `stage` to `main`. Ordinary change PRs use squash;
+promotion and branch synchronization PRs use merge commits to preserve shared
+ancestry and prevent previously promoted work from reappearing in later PRs.
+Branch protections require pull requests, resolved review threads, and all
+successful CI checks. The repository currently has one maintainer, so
+approving reviews are not required until an independent reviewer is added. See
 [`CONTRIBUTING.md`](../CONTRIBUTING.md) for the branch flow, PR requirements,
 and local validation commands.
 
