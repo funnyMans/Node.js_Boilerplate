@@ -232,8 +232,7 @@ The `deepmerge-ts` alert is addressed by a scoped pnpm override for
 `@prisma/config`, selecting patched `deepmerge-ts` 8.0.2 while keeping the
 Prisma 7.10.0 CLI and client unchanged. A frozen install, forced full workspace
 build (including Prisma client generation), lint, and all 80 unit tests passed
-with that override. The alert status should be checked again on GitHub after
-the dependency commit is pushed.
+with that override. GitHub Dependabot subsequently marked the alert fixed.
 
 Prisma 8 remains a separate compatibility migration. Registry metadata lists
 `prisma` 8.0.0-rc.19 as latest, but `@prisma/client` remains at 7.10.0 and
@@ -242,8 +241,23 @@ start the major migration once Prisma publishes matching packages, then test
 all five service schemas, adapters, migrations, Docker builds, and integration
 journeys as a dedicated change.
 
-**Done when:** a clean CI run proves the same contracts and critical journey
-used by the local operator procedure.
+**Phase status: complete for current local contracts and journey.** A clean
+hosted CI run proves the workspace build, lint, unit and ETL tests, Compose
+configuration, sequential image builds, six-service contract probe, and
+critical order journey. Future CI scope should grow alongside new contracts;
+production delivery remains deferred.
+
+## Branch workflow and merge policy
+
+The repository uses `main` as its stable default branch, with protected
+`stage` and `dev` branches for release candidates and ongoing development.
+Normal feature/fix branches target `dev`; promotion pull requests advance
+`dev` to `stage`, then `stage` to `main`. Branch protections require pull
+requests, linear history, resolved review threads, and all successful CI
+checks. The repository currently has one maintainer, so approving reviews are
+not required until an independent reviewer is added. See
+[`CONTRIBUTING.md`](../CONTRIBUTING.md) for the branch flow, PR requirements,
+and local validation commands.
 
 ## Later — Deployment
 
