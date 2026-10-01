@@ -148,6 +148,7 @@ jobs:
 
       - name: Run users integration tests
         run: |
+          pnpm --filter 'users-service^...' build
           pnpm --filter users-service exec prisma generate
           pnpm test:integration
 
