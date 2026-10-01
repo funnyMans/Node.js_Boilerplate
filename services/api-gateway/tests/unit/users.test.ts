@@ -58,7 +58,13 @@ describe('api gateway user routes', () => {
     expect(response.statusCode).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith(
       'http://users.internal:3001/users/user-1',
-      expect.objectContaining({ body: JSON.stringify({ firstName: 'Nora' }) })
+      expect.objectContaining({
+        body: JSON.stringify({ firstName: 'Nora' }),
+        headers: expect.objectContaining({
+          'x-authenticated-user-id': 'user-1',
+          'x-correlation-id': expect.any(String),
+        }),
+      })
     );
     await server.close();
   });

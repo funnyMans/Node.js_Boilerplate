@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ForbiddenError } from '@app/contracts';
+import { getDownstreamRequestContext } from '../../../infrastructure/clients/request-context';
 import type { AuthClientPort } from '../../../app/services/auth-client.interface';
 import { userAccessPolicy } from '../../../app/policies/user-access.policy';
 import { authenticateRequest } from '../guards/auth.guard';
@@ -31,7 +32,9 @@ export function registerUserRoutes(
         ? `${usersServiceUrl}/users?${queryString}`
         : `${usersServiceUrl}/users`;
 
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        headers: getDownstreamRequestContext(request),
+      });
       if (!res.ok) return reply.code(res.status).send({ error: 'users service error' });
       return res.json();
     } catch (err) {
@@ -50,8 +53,12 @@ export function registerUserRoutes(
     }
 
     try {
+      const requestContext = getDownstreamRequestContext(request);
       const res = await fetch(`${usersServiceUrl}/users/${id}`, {
-        headers: { 'x-authenticated-user-id': session.userId },
+        headers: {
+          'x-authenticated-user-id': session.userId,
+          ...requestContext,
+        },
       });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({ error: 'users service error' }));
@@ -90,11 +97,13 @@ export function registerUserRoutes(
     }
 
     try {
+      const requestContext = getDownstreamRequestContext(request);
       const res = await fetch(`${usersServiceUrl}/users/${id}`, {
         method: 'PATCH',
         headers: {
           'content-type': 'application/json',
           'x-authenticated-user-id': session.userId,
+          ...requestContext,
         },
         body: JSON.stringify(isAdminBan ? { status: 'blocked' } : profileUpdate),
       });
@@ -111,8 +120,8 @@ export function registerUserRoutes(
     }
   });
 
-  server.get('/users/count', async (_request, reply) => {
-    const session = await authenticateRequest(_request, reply, authClient);
+  server.get('/users/count', async (request, reply) => {
+    const session = await authenticateRequest(request, reply, authClient);
     if (!session) return;
     if (!userAccessPolicy.canListUsers(session.role)) {
       const error: ForbiddenError = { code: 'FORBIDDEN', message: 'Admin access required' };
@@ -120,7 +129,9 @@ export function registerUserRoutes(
     }
 
     try {
-      const res = await fetch(`${usersServiceUrl}/users/count`);
+      const res = await fetch(`${usersServiceUrl}/users/count`, {
+        headers: getDownstreamRequestContext(request),
+      });
       if (!res.ok) return reply.code(res.status).send({ error: 'users service error' });
       return res.json();
     } catch (err) {
