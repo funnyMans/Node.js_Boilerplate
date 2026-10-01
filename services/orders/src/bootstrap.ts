@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
+import type { FastifyBaseLogger } from 'fastify';
 import { S3Client } from '@aws-sdk/client-s3';
-import { createServiceBootstrap, registerServiceMetrics } from '@app/common';
+import { createLogger, createServiceBootstrap, registerServiceMetrics } from '@app/common';
 import { createNatsClient } from '@nodejs-boilerplate/common-infra';
 import { OrdersService } from './app/orders.service';
 import { config } from './infrastructure/config';
@@ -14,23 +15,12 @@ import { registerOrderRoutes } from './interfaces/http/routes/orders';
 import { registerOutboxMetrics } from './infrastructure/metrics/outbox-metrics';
 
 export function createServer() {
-  const server = Fastify({
-    logger: {
-      level: config.LOG_LEVEL,
-      ...(config.NODE_ENV === 'development'
-        ? {
-            transport: {
-              target: 'pino-pretty',
-              options: { colorize: true, translateTime: 'SYS:standard' },
-            },
-          }
-        : {}),
-    },
-  });
+  const logger: FastifyBaseLogger = createLogger('orders-service', config.LOG_LEVEL);
+  const server = Fastify({ loggerInstance: logger });
   const outboxPublisher = new OutboxPublisher(
     prisma,
     server.log,
-    () => createNatsClient(config.NATS_URL),
+    () => createNatsClient(config.NATS_URL, server.log),
     1000,
     config.OUTBOX_RETENTION_DAYS
   );
@@ -72,7 +62,6 @@ export function createServer() {
 
   const { shutdown } = createServiceBootstrap(server, {
     serviceName: 'orders-service',
-    loggerLevel: config.LOG_LEVEL,
     shutdownTasks: [
       () => outboxPublisher.stop(),
       () => outboxRawExporter.stop(),

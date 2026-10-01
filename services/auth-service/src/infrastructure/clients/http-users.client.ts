@@ -3,13 +3,7 @@ import type {
   CreatedUser,
   UsersClientPort,
 } from '../../app/services/users-client.interface';
-
-export class UsersServiceUnavailableError extends Error {
-  constructor() {
-    super('Users service unavailable');
-    this.name = 'UsersServiceUnavailableError';
-  }
-}
+import { UsersServiceUnavailableError } from '../../app/services/users-client.interface';
 
 export class HttpUsersClient implements UsersClientPort {
   constructor(private readonly usersServiceUrl: string) {}
@@ -28,6 +22,24 @@ export class HttpUsersClient implements UsersClientPort {
       if (!user.id || !user.email) throw new UsersServiceUnavailableError();
 
       return { id: user.id, email: user.email };
+    } catch (error) {
+      if (error instanceof UsersServiceUnavailableError) throw error;
+      throw new UsersServiceUnavailableError();
+    }
+  }
+
+  async isUserActive(userId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.usersServiceUrl}/users/${encodeURIComponent(userId)}`);
+      if (response.status === 404) return false;
+      if (!response.ok) throw new UsersServiceUnavailableError();
+
+      const user = (await response.json()) as { status?: unknown };
+      if (user.status !== 'active' && user.status !== 'blocked' && user.status !== 'deleted') {
+        throw new UsersServiceUnavailableError();
+      }
+
+      return user.status === 'active';
     } catch (error) {
       if (error instanceof UsersServiceUnavailableError) throw error;
       throw new UsersServiceUnavailableError();

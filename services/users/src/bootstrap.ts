@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
-import type { FastifyInstance } from 'fastify';
-import { createServiceBootstrap, registerServiceMetrics } from '@app/common';
+import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
+import { createLogger, createServiceBootstrap, registerServiceMetrics } from '@app/common';
 import { createRedisClient } from '@nodejs-boilerplate/common-infra';
 import prisma from './infrastructure/database/prisma';
 import { registerHealthRoutes } from './interfaces/http/routes/health';
@@ -12,24 +12,12 @@ export function createServer(): {
   redis: ReturnType<typeof createRedisClient>;
   shutdown: () => Promise<void>;
 } {
-  const server = Fastify({
-    logger: {
-      level: config.LOG_LEVEL,
-      ...(process.env.NODE_ENV === 'development'
-        ? {
-            transport: {
-              target: 'pino-pretty',
-              options: { colorize: true, translateTime: 'SYS:standard' },
-            },
-          }
-        : {}),
-    },
-  });
+  const logger: FastifyBaseLogger = createLogger('users-service', config.LOG_LEVEL);
+  const server = Fastify({ loggerInstance: logger });
 
-  const redis = createRedisClient(config.REDIS_URL);
-  const { shutdown } = createServiceBootstrap(server as any, {
+  const redis = createRedisClient(config.REDIS_URL, server.log);
+  const { shutdown } = createServiceBootstrap(server, {
     serviceName: 'users-service',
-    loggerLevel: config.LOG_LEVEL,
     shutdownTasks: [
       () => {
         server.log.info({ redisStatus: redis.status }, 'closing Redis connection');

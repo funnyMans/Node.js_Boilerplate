@@ -5,7 +5,8 @@
 The runnable local application stack is
 [`infra/docker-compose.dev.yml`](../infra/docker-compose.dev.yml). It uses
 PostgreSQL, Redis, NATS, Temporal, service containers, Moto for S3-compatible
-testing, Dagster, Prometheus, Grafana, and an OpenTelemetry collector.
+testing, Dagster, Prometheus, Grafana, an OpenTelemetry collector, and Tempo
+for local trace storage and querying.
 
 Use [`infra/README.md`](../infra/README.md) for the current service list,
 resource-conscious build/start procedure, ports, health semantics, and data

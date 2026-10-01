@@ -53,7 +53,7 @@ status:
 health:
 	@curl -fsS http://localhost:8080/health
 	@printf "\n"
-	@curl -fsS http://localhost:3001/health
+	@curl -fsS http://localhost:3000/ready
 	@printf "\n"
 
 order-journey:

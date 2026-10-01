@@ -134,4 +134,47 @@ describe('gateway auth routes', () => {
     expect(response.json()).toEqual({ accessToken: 'token' });
     await server.close();
   });
+
+  it('forwards correlation and trace context to auth-service', async () => {
+    const server = Fastify();
+    registerAuthRoutes(server, 'http://auth-service:3002');
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ accessToken: 'token' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    server.addHook('onRequest', async (request) => {
+      Object.assign(request.raw, {
+        __requestSpan: {
+          spanContext: () => ({
+            traceId: '0123456789abcdef0123456789abcdef',
+            spanId: '0123456789abcdef',
+            traceFlags: 1,
+          }),
+        },
+      });
+    });
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/auth/login',
+      headers: { 'x-correlation-id': 'corr-auth' },
+      payload: { email: 'person@example.com', password: 'correct-horse' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://auth-service:3002/auth/login',
+      expect.objectContaining({
+        headers: {
+          'content-type': 'application/json',
+          'x-correlation-id': 'corr-auth',
+          traceparent: '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01',
+        },
+      })
+    );
+    await server.close();
+  });
 });
