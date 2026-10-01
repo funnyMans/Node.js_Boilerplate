@@ -99,6 +99,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci
       DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/app
     steps:
       - name: Check out repository
