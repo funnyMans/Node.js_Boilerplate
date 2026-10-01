@@ -159,9 +159,19 @@ services:
     command: ['--config=/etc/otel-config.yaml']
     volumes:
       - ./otel-config.yaml:/etc/otel-config.yaml:ro
+    depends_on:
+      tempo:
+        condition: service_started
     ports:
       - '4317:4317'
       - '4318:4318'
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ['-config.file=/etc/tempo.yaml']
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
 
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -176,6 +186,9 @@ services:
 
   grafana:
     image: grafana/grafana:11.1.0
+    depends_on:
+      tempo:
+        condition: service_started
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -260,8 +273,6 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@postgres:5432/app
       - REDIS_URL=redis://redis:6379
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
-    ports:
-      - '3001:3001'
     healthcheck:
       test:
         [
@@ -406,3 +417,4 @@ volumes:
   pgdata:
   grafana-data:
   dagster-home:
+  tempo-data:

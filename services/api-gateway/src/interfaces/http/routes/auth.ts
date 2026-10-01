@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { AuthErrorShape } from '@app/contracts';
+import { getDownstreamRequestContext } from '../../../infrastructure/clients/request-context';
 
 const authUnavailableError: AuthErrorShape = {
   code: 'AUTH_SERVICE_UNAVAILABLE',
@@ -18,7 +19,10 @@ export function registerAuthRoutes(server: FastifyInstance, authServiceUrl: stri
     try {
       const response = await fetch(`${authServiceUrl}/auth/register`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...getDownstreamRequestContext(request),
+        },
         body: JSON.stringify(request.body),
       });
       return forwardResponse(response, reply);
@@ -32,7 +36,10 @@ export function registerAuthRoutes(server: FastifyInstance, authServiceUrl: stri
     try {
       const response = await fetch(`${authServiceUrl}/auth/refresh`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...getDownstreamRequestContext(request),
+        },
         body: JSON.stringify(request.body),
       });
       return forwardResponse(response, reply);
@@ -46,7 +53,10 @@ export function registerAuthRoutes(server: FastifyInstance, authServiceUrl: stri
     try {
       const response = await fetch(`${authServiceUrl}/auth/login`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...getDownstreamRequestContext(request),
+        },
         body: JSON.stringify(request.body),
       });
       return forwardResponse(response, reply);
@@ -60,9 +70,12 @@ export function registerAuthRoutes(server: FastifyInstance, authServiceUrl: stri
     try {
       const response = await fetch(`${authServiceUrl}/auth/logout`, {
         method: 'POST',
-        headers: request.headers.authorization
-          ? { authorization: request.headers.authorization }
-          : undefined,
+        headers: {
+          ...(request.headers.authorization
+            ? { authorization: request.headers.authorization }
+            : {}),
+          ...getDownstreamRequestContext(request),
+        },
       });
       return forwardResponse(response, reply);
     } catch (error) {

@@ -146,6 +146,11 @@ jobs:
           -f infra/docker-compose.e2e.yml
           up -d --no-build --wait --wait-timeout 600 api-gateway
 
+      - name: Run users integration tests
+        run: |
+          pnpm --filter users-service exec prisma generate
+          pnpm test:integration
+
       - name: Probe all service contracts
         run: pnpm docker:service-contract
 

@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
-import type { FastifyInstance } from 'fastify';
-import { createServiceBootstrap, registerServiceMetrics } from '@app/common';
+import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
+import { createLogger, createServiceBootstrap, registerServiceMetrics } from '@app/common';
 import {
   createRedisClient,
   createNatsClient,
@@ -20,21 +20,10 @@ export function createServer(): {
   server: FastifyInstance;
   shutdown: () => Promise<void>;
 } {
-  const server = Fastify({
-    logger: {
-      level: config.LOG_LEVEL,
-      ...(process.env.NODE_ENV === 'development'
-        ? {
-            transport: {
-              target: 'pino-pretty',
-              options: { colorize: true, translateTime: 'SYS:standard' },
-            },
-          }
-        : {}),
-    },
-  });
+  const logger: FastifyBaseLogger = createLogger('api-gateway', config.LOG_LEVEL);
+  const server = Fastify({ loggerInstance: logger });
 
-  const redis = createRedisClient(config.REDIS_URL);
+  const redis = createRedisClient(config.REDIS_URL, server.log);
   type NatsClient = Awaited<ReturnType<typeof createNatsClient>>;
   let natsClient: NatsClient | undefined;
   let natsConnectionPromise: Promise<NatsClient | undefined> | undefined;
@@ -43,7 +32,7 @@ export function createServer(): {
     if (natsClient) return Promise.resolve(natsClient);
     if (natsConnectionPromise) return natsConnectionPromise;
 
-    const connectionAttempt = createNatsClient(config.NATS_URL)
+    const connectionAttempt = createNatsClient(config.NATS_URL, server.log)
       .then((connection) => {
         natsClient = connection;
         natsConnectionWarningLogged = false;
@@ -67,9 +56,8 @@ export function createServer(): {
   };
   void getNatsClient();
 
-  const { shutdown } = createServiceBootstrap(server as any, {
+  const { shutdown } = createServiceBootstrap(server, {
     serviceName: 'api-gateway',
-    loggerLevel: config.LOG_LEVEL,
     shutdownTasks: [
       () => redis.quit(),
       async () => {

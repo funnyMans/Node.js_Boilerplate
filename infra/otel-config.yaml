@@ -4,12 +4,18 @@ receivers:
       grpc:
       http:
 
+processors:
+  batch:
+
 exporters:
-  logging:
-    loglevel: info
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [logging]
+      processors: [batch]
+      exporters: [otlp/tempo]

@@ -69,15 +69,22 @@ export function registerUserRoutes(
     const session = await authenticateRequest(request, reply, authClient);
     if (!session) return;
 
-    const isSelfUpdate = userAccessPolicy.canAccessUser(session.userId, id, session.role);
-    const isAdminBan =
-      request.body &&
-      typeof request.body === 'object' &&
-      'status' in request.body &&
-      request.body.status === 'blocked' &&
-      userAccessPolicy.canBanUser(session.role);
+    const canUpdateTarget =
+      userAccessPolicy.hasPermission(session.role, 'users:update:any') ||
+      (session.userId === id && userAccessPolicy.hasPermission(session.role, 'users:update:own'));
+    const body =
+      request.body && typeof request.body === 'object' && !Array.isArray(request.body)
+        ? (request.body as Record<string, unknown>)
+        : {};
+    const profileUpdate = Object.fromEntries(
+      Object.entries(body).filter(([key]) => key === 'firstName' || key === 'lastName')
+    );
+    const isProfileUpdate =
+      Object.keys(body).length > 0 &&
+      Object.keys(body).length === Object.keys(profileUpdate).length;
+    const isAdminBan = body.status === 'blocked' && userAccessPolicy.canBanUser(session.role);
 
-    if (!isSelfUpdate && !isAdminBan) {
+    if ((!canUpdateTarget || !isProfileUpdate) && !isAdminBan) {
       const error: ForbiddenError = { code: 'FORBIDDEN', message: 'User access denied' };
       return reply.code(403).send(error);
     }
@@ -89,7 +96,7 @@ export function registerUserRoutes(
           'content-type': 'application/json',
           'x-authenticated-user-id': session.userId,
         },
-        body: JSON.stringify(request.body),
+        body: JSON.stringify(isAdminBan ? { status: 'blocked' } : profileUpdate),
       });
 
       if (!res.ok) {

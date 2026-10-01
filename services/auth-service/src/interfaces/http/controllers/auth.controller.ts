@@ -13,6 +13,7 @@ import { RefreshSessionUseCase } from '../../../app/use-cases/refresh-session/re
 import { RegisterAccountUseCase } from '../../../app/use-cases/register-account/register-account.use-case';
 import { RevokeSessionUseCase } from '../../../app/use-cases/revoke-session/revoke-session.use-case';
 import { ValidateSessionUseCase } from '../../../app/use-cases/validate-session/validate-session.use-case';
+import { UsersServiceUnavailableError } from '../../../app/services/users-client.interface';
 
 const registerSchema = z.object({
   email: z.string().trim().email(),
@@ -96,13 +97,24 @@ export class AuthController {
         expiresAt: session.expiresAt.toISOString(),
       };
       return reply.send(response);
-    } catch {
-      const error = new AppError('Invalid credentials', {
+    } catch (error) {
+      if (error instanceof UsersServiceUnavailableError) {
+        const appError = new AppError(error.message, {
+          code: 'AUTH_SERVICE_UNAVAILABLE',
+          statusCode: 502,
+          category: 'dependency',
+          retryable: true,
+        });
+        return reply.status(502).send(appError.toResponse());
+      }
+      if (!(error instanceof Error) || error.message !== 'Invalid credentials') throw error;
+
+      const authError = new AppError('Invalid credentials', {
         code: 'INVALID_CREDENTIALS',
         statusCode: 401,
         category: 'auth',
       });
-      return reply.status(401).send(error.toResponse());
+      return reply.status(401).send(authError.toResponse());
     }
   }
 
@@ -132,13 +144,24 @@ export class AuthController {
         expiresAt: session.expiresAt.toISOString(),
       };
       return reply.send(response);
-    } catch {
-      const error = new AppError('Invalid session', {
+    } catch (error) {
+      if (error instanceof UsersServiceUnavailableError) {
+        const appError = new AppError(error.message, {
+          code: 'AUTH_SERVICE_UNAVAILABLE',
+          statusCode: 502,
+          category: 'dependency',
+          retryable: true,
+        });
+        return reply.status(502).send(appError.toResponse());
+      }
+      if (!(error instanceof Error) || error.message !== 'Invalid refresh token') throw error;
+
+      const authError = new AppError('Invalid session', {
         code: 'INVALID_SESSION',
         statusCode: 401,
         category: 'auth',
       });
-      return reply.status(401).send(error.toResponse());
+      return reply.status(401).send(authError.toResponse());
     }
   }
 
@@ -163,7 +186,19 @@ export class AuthController {
       return reply.status(401).send(error.toResponse());
     }
 
-    const session = await this.validateSession.execute(token);
+    let session;
+    try {
+      session = await this.validateSession.execute(token);
+    } catch (error) {
+      if (!(error instanceof UsersServiceUnavailableError)) throw error;
+      const appError = new AppError(error.message, {
+        code: 'AUTH_SERVICE_UNAVAILABLE',
+        statusCode: 502,
+        category: 'dependency',
+        retryable: true,
+      });
+      return reply.status(502).send(appError.toResponse());
+    }
     if (!session) {
       const error = new AppError('Invalid session', {
         code: 'INVALID_SESSION',

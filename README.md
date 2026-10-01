@@ -27,9 +27,9 @@ docker compose -f infra/docker-compose.dev.yml build dagster
 # Use the images already built
 docker compose -f infra/docker-compose.dev.yml up -d --no-build
 
-# Check the proxy (Nginx) and users service
+# Check the proxy (Nginx) and gateway readiness, including the users dependency
 curl -sS http://127.0.0.1:8080/health | jq .
-curl -sS http://127.0.0.1:3001/health | jq .
+curl -sS http://127.0.0.1:3000/ready | jq .
 ```
 
 Bring it down:

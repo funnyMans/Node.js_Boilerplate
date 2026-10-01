@@ -1,12 +1,14 @@
 import type { Session } from '../../../domain/models/session.entity';
 import type { AuthRepositoryPort } from '../../../domain/repositories/auth.repository.interface';
 import type { PasswordHasher } from '../../services/password-hasher.interface';
+import type { UsersClientPort } from '../../services/users-client.interface';
 import type { LoginInput } from './login.dto';
 
 export class LoginUseCase {
   constructor(
     private readonly authRepository: AuthRepositoryPort,
     private readonly passwordHasher: PasswordHasher,
+    private readonly usersClient: UsersClientPort,
     private readonly sessionLifetimeMs = 1000 * 60 * 60 * 24 * 7,
     private readonly refreshLifetimeMs = 1000 * 60 * 60 * 24 * 30
   ) {}
@@ -17,6 +19,10 @@ export class LoginUseCase {
       !credential ||
       !(await this.passwordHasher.verify(input.password, credential.passwordHash))
     ) {
+      throw new Error('Invalid credentials');
+    }
+
+    if (!(await this.usersClient.isUserActive(credential.userId))) {
       throw new Error('Invalid credentials');
     }
 

@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import Stripe from 'stripe';
-import { createServiceBootstrap, registerServiceMetrics } from '@app/common';
+import { createLogger, createServiceBootstrap, registerServiceMetrics } from '@app/common';
 import { PaymentService } from './app/payment-service';
 import { config, requireRuntimeSecrets } from './infrastructure/config';
 import prisma from './infrastructure/database/prisma';
@@ -15,9 +15,8 @@ export function createServer(): {
   server: FastifyInstance;
   shutdown: () => Promise<void>;
 } {
-  const server = Fastify({
-    logger: { level: config.LOG_LEVEL },
-  });
+  const logger: FastifyBaseLogger = createLogger('payments-service', config.LOG_LEVEL);
+  const server = Fastify({ loggerInstance: logger });
 
   const runtime = requireRuntimeSecrets();
   const stripePort = runtime.useFakeStripe
@@ -32,7 +31,6 @@ export function createServer(): {
 
   const { shutdown } = createServiceBootstrap(server, {
     serviceName: 'payments-service',
-    loggerLevel: config.LOG_LEVEL,
     shutdownTasks: [() => prisma.$disconnect()],
   });
   registerServiceMetrics(server, 'payments-service');
