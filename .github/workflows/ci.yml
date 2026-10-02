@@ -5,8 +5,10 @@ on:
     branches:
       - main
       - stage
-      - dev
   pull_request:
+    branches:
+      - main
+      - stage
   workflow_dispatch:
 
 permissions:
@@ -99,6 +101,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci
       DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/app
     steps:
       - name: Check out repository
@@ -145,6 +149,12 @@ jobs:
           -f infra/docker-compose.dev.yml
           -f infra/docker-compose.e2e.yml
           up -d --no-build --wait --wait-timeout 600 api-gateway
+
+      - name: Run users integration tests
+        run: |
+          pnpm --filter 'users-service^...' build
+          pnpm --filter users-service exec prisma generate
+          pnpm test:integration
 
       - name: Probe all service contracts
         run: pnpm docker:service-contract

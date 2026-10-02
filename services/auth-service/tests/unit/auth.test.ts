@@ -103,10 +103,15 @@ class FakePasswordHasher implements PasswordHasher {
 
 class FakeUsersClient implements UsersClientPort {
   createdEmails: string[] = [];
+  active = true;
 
   createUser(input: { email: string }) {
     this.createdEmails.push(input.email);
     return Promise.resolve({ id: 'user-1', email: input.email });
+  }
+
+  isUserActive() {
+    return Promise.resolve(this.active);
   }
 }
 
@@ -133,7 +138,7 @@ describe('auth use cases', () => {
       password: 'correct-horse',
     });
 
-    const session = await new LoginUseCase(repository, hasher).execute({
+    const session = await new LoginUseCase(repository, hasher, new FakeUsersClient()).execute({
       email: 'person@example.com',
       password: 'correct-horse',
     });
@@ -150,12 +155,15 @@ describe('auth use cases', () => {
       email: 'person@example.com',
       password: 'correct-horse',
     });
-    await new LoginUseCase(repository, hasher).execute({
+    const usersClient = new FakeUsersClient();
+    await new LoginUseCase(repository, hasher, usersClient).execute({
       email: 'person@example.com',
       password: 'correct-horse',
     });
 
-    const refreshed = await new RefreshSessionUseCase(repository, hasher).execute('refresh-token');
+    const refreshed = await new RefreshSessionUseCase(repository, hasher, usersClient).execute(
+      'refresh-token'
+    );
 
     expect(refreshed).toMatchObject({ userId: 'user-1', role: 'user' });
     expect(repository.revokedRefreshToken).toBe('refresh-token');
@@ -176,16 +184,61 @@ describe('auth use cases', () => {
       email: 'person@example.com',
       password: 'correct-horse',
     });
-    await new LoginUseCase(repository, hasher).execute({
+    const usersClient = new FakeUsersClient();
+    await new LoginUseCase(repository, hasher, usersClient).execute({
       email: 'person@example.com',
       password: 'correct-horse',
     });
 
-    const validate = new ValidateSessionUseCase(repository);
+    const validate = new ValidateSessionUseCase(repository, usersClient);
     expect(await validate.execute('session-token')).toMatchObject({ userId: 'user-1' });
 
     await new RevokeSessionUseCase(repository).execute('session-token');
     expect(await validate.execute('session-token')).toBeNull();
+  });
+
+  it('rejects login for an inactive account', async () => {
+    const repository = new InMemoryAuthRepository();
+    const hasher = new FakePasswordHasher();
+    await new RegisterCredentialsUseCase(repository, hasher).execute({
+      userId: 'user-1',
+      email: 'person@example.com',
+      password: 'correct-horse',
+    });
+    const usersClient = new FakeUsersClient();
+    usersClient.active = false;
+
+    await expect(
+      new LoginUseCase(repository, hasher, usersClient).execute({
+        email: 'person@example.com',
+        password: 'correct-horse',
+      })
+    ).rejects.toThrow('Invalid credentials');
+    expect(repository.session).toBeNull();
+  });
+
+  it('rejects refresh and existing sessions for inactive accounts', async () => {
+    const repository = new InMemoryAuthRepository();
+    const hasher = new FakePasswordHasher();
+    const usersClient = new FakeUsersClient();
+    await new RegisterCredentialsUseCase(repository, hasher).execute({
+      userId: 'user-1',
+      email: 'person@example.com',
+      password: 'correct-horse',
+    });
+    await new LoginUseCase(repository, hasher, usersClient).execute({
+      email: 'person@example.com',
+      password: 'correct-horse',
+    });
+    usersClient.active = false;
+
+    await expect(
+      new RefreshSessionUseCase(repository, hasher, usersClient).execute('refresh-token')
+    ).rejects.toThrow('Invalid refresh token');
+    expect(repository.revokedRefreshToken).toBeNull();
+    await expect(
+      new ValidateSessionUseCase(repository, usersClient).execute('session-token')
+    ).resolves.toBeNull();
   });
 
   it('creates the users-service user before storing auth credentials', async () => {

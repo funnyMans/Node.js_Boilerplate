@@ -1,14 +1,16 @@
 # common-infra
 
-Shared infrastructure helpers for the monorepo: Redis, BullMQ, Temporal.
-
-This package provides lightweight factories and types so services can import
-common clients in a consistent way.
+Shared Redis, BullMQ, Temporal, NATS, and health helpers for the monorepo.
+Client factories that report asynchronous errors accept the service's
+structured logger so infrastructure failures share the same Pino pipeline.
 
 Example:
 
 ```ts
-import { createRedisClient } from '@nodejs-boilerplate/common-infra';
+import { createLogger } from '@app/common';
+import { createRedisClient, createNatsClient } from '@nodejs-boilerplate/common-infra';
 
-const redis = createRedisClient();
+const logger = createLogger('orders-service');
+const redis = createRedisClient(process.env.REDIS_URL, logger);
+const nats = await createNatsClient(process.env.NATS_URL, logger);
 ```

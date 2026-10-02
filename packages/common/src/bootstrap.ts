@@ -1,33 +1,41 @@
 import { context, ROOT_CONTEXT, propagation, trace } from '@opentelemetry/api';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { IncomingMessage } from 'node:http';
+import type { Span } from '@opentelemetry/api';
 import {
-  createLogger,
   createTraceContext,
   initObservability,
   registerShutdownHandlers,
   setRequestTraceContext,
 } from './index';
 
+type RequestRaw = IncomingMessage & {
+  __correlationId?: string;
+  __requestStartTs?: number;
+  __requestSpan?: Span;
+  __requestTraceId?: string;
+};
+
+function getRequestRaw(request: FastifyRequest): RequestRaw {
+  return request.raw as RequestRaw;
+}
+
 export type ServiceOptions = {
   serviceName: string;
-  loggerLevel?: string;
   shutdownTasks?: Array<() => Promise<unknown> | unknown>;
   observabilityEndpoint?: string | undefined;
 };
 
-export function createServiceBootstrap(app: any, opts: ServiceOptions) {
-  const logger = createLogger(opts.serviceName, opts.loggerLevel);
+export function createServiceBootstrap(app: FastifyInstance, opts: ServiceOptions) {
+  const logger = app.log;
   const observability = initObservability({
     serviceName: opts.serviceName,
     endpoint: opts.observabilityEndpoint,
   });
   const tracer = trace.getTracer(opts.serviceName);
-  if (typeof app.setLogger === 'function') {
-    app.setLogger(logger);
-  } else if (app && typeof app === 'object') {
-    (app as any).log = logger;
-  }
 
-  app.addHook('onRequest', async (request: any, reply: any) => {
+  app.addHook('onRequest', async (request, reply) => {
+    const raw = getRequestRaw(request);
     const requestId = request.id ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const incomingCorrelationId = request.headers['x-correlation-id'];
     const correlationId =
@@ -37,10 +45,10 @@ export function createServiceBootstrap(app: any, opts: ServiceOptions) {
         ? incomingCorrelationId
         : requestId;
     request.id = requestId;
-    request.raw.__correlationId = correlationId;
+    raw.__correlationId = correlationId;
     reply.header('x-request-id', requestId);
     reply.header('x-correlation-id', correlationId);
-    request.raw.__requestStartTs = Date.now();
+    raw.__requestStartTs = Date.now();
 
     const headers: Record<string, string> = {};
     for (const header of ['traceparent', 'tracestate', 'baggage']) {
@@ -55,7 +63,7 @@ export function createServiceBootstrap(app: any, opts: ServiceOptions) {
       {
         attributes: {
           'http.method': request.method,
-          'http.route': request.routerPath ?? request.routeOptions?.url ?? request.url,
+          'http.route': request.routeOptions.url ?? request.url,
           'service.name': opts.serviceName,
           'request.id': requestId,
           'correlation.id': correlationId,
@@ -64,17 +72,18 @@ export function createServiceBootstrap(app: any, opts: ServiceOptions) {
       parentContext
     );
     const traceId = span.spanContext().traceId;
-    request.raw.__requestSpan = span;
-    request.raw.__requestTraceId = traceId;
-    setRequestTraceContext(request.raw, createTraceContext(span.spanContext()));
+    raw.__requestSpan = span;
+    raw.__requestTraceId = traceId;
+    setRequestTraceContext(raw, createTraceContext(span.spanContext()));
     if (traceId) reply.header('x-trace-id', traceId);
   });
 
-  app.addHook('onResponse', async (request: any, reply: any) => {
-    const startedAt = request.raw.__requestStartTs ?? Date.now();
+  app.addHook('onResponse', async (request, reply) => {
+    const raw = getRequestRaw(request);
+    const startedAt = raw.__requestStartTs ?? Date.now();
     const durationMs = Date.now() - startedAt;
-    const span = request.raw.__requestSpan as any;
-    const traceId = request.raw.__requestTraceId ?? span?.spanContext?.().traceId ?? 'unknown';
+    const span = raw.__requestSpan;
+    const traceId = raw.__requestTraceId ?? span?.spanContext().traceId ?? 'unknown';
 
     if (span) {
       span.setAttributes({
@@ -87,11 +96,11 @@ export function createServiceBootstrap(app: any, opts: ServiceOptions) {
     logger.info(
       {
         requestId: request.id,
-        correlationId: request.raw.__correlationId,
+        correlationId: raw.__correlationId,
         traceId,
         method: request.method,
         url: request.url,
-        route: request.routerPath ?? request.routeOptions?.url ?? undefined,
+        route: request.routeOptions.url,
         statusCode: reply.statusCode,
         durationMs,
       },
@@ -99,11 +108,12 @@ export function createServiceBootstrap(app: any, opts: ServiceOptions) {
     );
   });
 
-  app.addHook('onError', async (request: any, reply: any, error: any) => {
-    const startedAt = request.raw.__requestStartTs ?? Date.now();
+  app.addHook('onError', async (request, reply, error) => {
+    const raw = getRequestRaw(request);
+    const startedAt = raw.__requestStartTs ?? Date.now();
     const durationMs = Date.now() - startedAt;
-    const span = request.raw.__requestSpan as any;
-    const traceId = request.raw.__requestTraceId ?? span?.spanContext?.().traceId ?? 'unknown';
+    const span = raw.__requestSpan;
+    const traceId = raw.__requestTraceId ?? span?.spanContext().traceId ?? 'unknown';
 
     if (span) {
       span.recordException(error);
@@ -117,11 +127,11 @@ export function createServiceBootstrap(app: any, opts: ServiceOptions) {
     logger.error(
       {
         requestId: request.id,
-        correlationId: request.raw.__correlationId,
+        correlationId: raw.__correlationId,
         traceId,
         method: request.method,
         url: request.url,
-        route: request.routerPath ?? request.routeOptions?.url ?? undefined,
+        route: request.routeOptions.url,
         statusCode: reply.statusCode ?? 500,
         durationMs,
         err: {

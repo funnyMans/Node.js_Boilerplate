@@ -69,4 +69,51 @@ describe('api gateway order routes', () => {
       })
     );
   });
+
+  it('propagates correlation and trace context to order reads', async () => {
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Response(JSON.stringify({ orders: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const server = createTestServer({ validateSession: async () => session });
+    server.addHook('onRequest', async (request) => {
+      Object.assign(request.raw, {
+        __requestSpan: {
+          spanContext: () => ({
+            traceId: '0123456789abcdef0123456789abcdef',
+            spanId: '0123456789abcdef',
+            traceFlags: 1,
+          }),
+        },
+      });
+    });
+
+    for (const url of ['/orders?limit=1', '/orders/order-1']) {
+      const response = await server.inject({
+        method: 'GET',
+        url,
+        headers: {
+          authorization: 'Bearer session-token',
+          'x-correlation-id': 'corr-read',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+    }
+
+    for (const [, options] of fetchMock.mock.calls) {
+      expect(options).toMatchObject({
+        headers: {
+          'x-authenticated-user-id': 'user-1',
+          'x-correlation-id': 'corr-read',
+          traceparent: '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01',
+        },
+      });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
