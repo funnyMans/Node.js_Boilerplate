@@ -1,8 +1,23 @@
 # Roadmap: operating the services as one system
 
-This roadmap prioritizes evidence that services work together over adding
-services. Each phase should leave behind a documented explanation, repeatable
-checks, and a clear statement of what has and has not been verified.
+This is a learning roadmap for understanding the system already in the
+repository, not a feature roadmap or a plan to deploy a product. Do not add
+services just to make the stack larger. Each phase should leave behind a
+readable explanation, repeatable evidence, and a clear statement of what has
+and has not been verified.
+
+## Current focus — learn and configure what exists
+
+Pause new services and business functionality while working through the
+existing architecture: follow the main order journey, study the responsibility
+of each service and tool, and learn how logs, traces, metrics, tests, and
+health signals explain its behavior. Improve the diagrams and guides wherever
+they leave a learner to infer an important boundary.
+
+The next operational exercise is Phase 5 below, but first understand the
+relevant service, expected signal, and recovery action. Kubernetes,
+GraphQL/Apollo Federation, RabbitMQ, AI agents, and deployment are possible
+future learning topics—not current requirements or commitments.
 
 ## Phase 1 — Make the current setup the source of truth
 
@@ -14,7 +29,7 @@ configuration. The local operations guide documents individual image builds
 followed by `up --no-build`, configured health checks, trace-export targets,
 and the distinction between a successful init job and a healthy long-running
 service. Architecture notes and Mermaid sources now label implemented local
-components separately from future production options.
+components separately from optional future choices.
 
 **Verified:** on 2026-09-29 the gateway and its declared dependency set were
 started with `docker compose ... up -d --no-build --wait api-gateway`. Compose
@@ -98,14 +113,15 @@ inventory logs. Prometheus reported all six application targets up and loaded
 the NATS, workflow-start, and raw-export terminal alerts.
 
 **Remaining limits:** this repository has no application NATS consumer; the
-journey subscribes only to inspect headers. The local OTel collector logs
-spans but has no searchable trace store. A controlled fault remains for the
-later failure-drill phase.
+journey subscribes only to inspect headers. Tempo and Grafana are now
+configured in the local stack for trace storage and search, but the current CI
+journey does not verify trace search or retention. A controlled dependency
+fault remains for the later failure-drill phase.
 
 **Phase status:** complete for trace context persistence and propagation
 through the exercised local order journey. NATS consumer-side continuation is
-not in scope because there is no application consumer. Searchable trace
-storage is still a separate observability improvement.
+not in scope because there is no application consumer. Trace search is
+configured locally but is not yet covered by automated verification.
 
 ## Phase 4 — Add measured recovery and data-lifecycle safeguards
 
@@ -225,8 +241,8 @@ the [successful GitHub Actions run](https://github.com/funnyMans/Node.js_Boilerp
 
 This proves the local operator contract and order-journey commands on a clean
 hosted runner. It does not build images in parallel or start optional Dagster,
-Prometheus, Grafana, Nginx, or the OTel collector as part of the integration
-job.
+Prometheus, Grafana, Nginx, the OTel collector, or Tempo as part of the
+integration job.
 
 The `deepmerge-ts` alert is addressed by a scoped pnpm override for
 `@prisma/config`, selecting patched `deepmerge-ts` 8.0.2 while keeping the
@@ -244,33 +260,39 @@ journeys as a dedicated change.
 **Phase status: complete for current local contracts and journey.** A clean
 hosted CI run proves the workspace build, lint, unit and ETL tests, Compose
 configuration, sequential image builds, six-service contract probe, and
-critical order journey. Future CI scope should grow alongside new contracts;
-production delivery remains deferred.
+critical order journey. Automatic CI for pushes and PRs targeting `dev` is
+temporarily paused; required checks remain active for `stage` and `main`.
+Manual workflow dispatch remains available. CI is a regression and learning
+tool, not a deployment pipeline.
 
 ## Branch workflow and merge policy
 
-The repository uses `main` as its stable default branch, with protected
-`stage` and `dev` branches for release candidates and ongoing development.
-Normal feature/fix branches target `dev`; promotion pull requests advance
-`dev` to `stage`, then `stage` to `main`. Ordinary change PRs use squash;
-promotion and branch synchronization PRs use merge commits to preserve shared
-ancestry and prevent previously promoted work from reappearing in later PRs.
-Branch protections require pull requests, resolved review threads, and all
-successful CI checks. The repository currently has one maintainer, so
-approving reviews are not required until an independent reviewer is added. See
+The repository uses `main` as its stable reference branch, with protected
+`stage` and `dev` branches for integration and ongoing learning work. Normal
+feature/fix branches target `dev`; promotion pull requests advance `dev` to
+`stage`, then `stage` to `main`. Ordinary change PRs use squash; promotion and
+branch synchronization PRs use merge commits to preserve shared ancestry and
+prevent previously promoted work from reappearing in later PRs. All three
+branches require pull requests and resolved review threads; deletion and
+non-fast-forward updates are blocked. Required CI checks apply to `stage` and
+`main`, but are temporarily exempted on `dev` while automatic CI is paused
+there. The repository currently has one maintainer, so approving reviews are
+not required. See
 [`CONTRIBUTING.md`](../CONTRIBUTING.md) for the branch flow, PR requirements,
 and local validation commands.
 
-## Later — Deployment
+## Deployment — intentionally out of scope
 
-Production infrastructure, CI/CD delivery, secret-manager integration, and
-deployment are intentionally deferred. Choose those after local behavior,
-failure/recovery evidence, and operational contracts are repeatable.
+There is no deployment milestone. Revisit deployment only if it becomes a
+specific learning objective; doing so is not required to complete this
+learning lab. Kubernetes, GraphQL/Apollo Federation, RabbitMQ, and AI agents
+are also possible study topics rather than scheduled work.
 
 ## Working rule
 
-For each phase, update the relevant guide and diagrams, retire a document only
-when its material has been moved or is genuinely obsolete, and verify the
-application at a risk-appropriate scope. Prefer a small targeted check before
-starting the full stack; use a no-build stack start when live integration
-evidence is needed and resource headroom allows it.
+For each change, explain the learning objective, relevant scenario, design
+choice and simpler alternative, failure behavior, and verification evidence.
+Update the relevant guide and diagrams, and state what remains unverified.
+Prefer a small targeted check before starting the full stack; use a no-build
+stack start when live integration evidence is needed and resource headroom
+allows it.
