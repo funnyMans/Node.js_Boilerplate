@@ -15,7 +15,7 @@
     "@app/contracts": "workspace:*",
     "@nodejs-boilerplate/common-infra": "workspace:*",
     "dotenv": "^17.4.2",
-    "fastify": "^5.12.1",
+    "fastify": "^5.12.5",
     "prom-client": "^15.1.3"
   }
 }
