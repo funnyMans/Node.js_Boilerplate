@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
+import type { FastifyBaseLogger } from 'fastify';
 import {
   checkDependencyHealth,
+  createLogger,
   createServiceBootstrap,
   getHttpDependencyHealth,
   registerServiceMetrics,
@@ -21,10 +23,10 @@ import { registerAuthRoutes } from './interfaces/http/routes/auth';
 import { registerHealthRoutes } from './interfaces/http/routes/health';
 
 export function createServer() {
-  const server = Fastify({ logger: { level: config.LOG_LEVEL } });
+  const logger: FastifyBaseLogger = createLogger('auth-service', config.LOG_LEVEL);
+  const server = Fastify({ loggerInstance: logger });
   const { shutdown } = createServiceBootstrap(server, {
     serviceName: 'auth-service',
-    loggerLevel: config.LOG_LEVEL,
     shutdownTasks: [() => prisma.$disconnect()],
   });
   const repository = new PrismaAuthRepository(prisma);
@@ -35,10 +37,10 @@ export function createServer() {
       usersClient,
       new RegisterCredentialsUseCase(repository, passwordHasher)
     ),
-    new LoginUseCase(repository, passwordHasher),
-    new RefreshSessionUseCase(repository, passwordHasher),
+    new LoginUseCase(repository, passwordHasher, usersClient),
+    new RefreshSessionUseCase(repository, passwordHasher, usersClient),
     new RevokeSessionUseCase(repository),
-    new ValidateSessionUseCase(repository)
+    new ValidateSessionUseCase(repository, usersClient)
   );
 
   registerServiceMetrics(server, 'auth-service');

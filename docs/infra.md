@@ -5,7 +5,8 @@
 The runnable local application stack is
 [`infra/docker-compose.dev.yml`](../infra/docker-compose.dev.yml). It uses
 PostgreSQL, Redis, NATS, Temporal, service containers, Moto for S3-compatible
-testing, Dagster, Prometheus, Grafana, and an OpenTelemetry collector.
+testing, Dagster, Prometheus, Grafana, an OpenTelemetry collector, and Tempo
+for local trace storage and querying.
 
 Use [`infra/README.md`](../infra/README.md) for the current service list,
 resource-conscious build/start procedure, ports, health semantics, and data
@@ -13,10 +14,12 @@ reset warnings. Do not use the older, incomplete
 [`infra/docker-compose.yml`](../infra/docker-compose.yml) as the application
 stack; it is not referenced by the Makefile or package scripts.
 
-## Production direction (not implemented here)
+## Possible deployment mapping (not a current goal)
 
-These are possible mappings, not deployed infrastructure or validated
-architecture decisions:
+The following table is an architecture comparison aid only. None of the
+options is selected, deployed, or required to complete the learning lab. Use
+local behavior and demonstrated failure/recovery needs to motivate any future
+deployment study:
 
 | Concern                | Possible managed option                                    |
 | ---------------------- | ---------------------------------------------------------- |

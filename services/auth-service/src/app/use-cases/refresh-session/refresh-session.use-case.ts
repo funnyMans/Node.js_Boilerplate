@@ -1,10 +1,12 @@
 import type { AuthRepositoryPort } from '../../../domain/repositories/auth.repository.interface';
 import type { PasswordHasher } from '../../services/password-hasher.interface';
+import type { UsersClientPort } from '../../services/users-client.interface';
 
 export class RefreshSessionUseCase {
   constructor(
     private readonly authRepository: AuthRepositoryPort,
     private readonly passwordHasher: PasswordHasher,
+    private readonly usersClient: UsersClientPort,
     private readonly sessionLifetimeMs = 1000 * 60 * 60 * 24 * 7,
     private readonly refreshLifetimeMs = 1000 * 60 * 60 * 24 * 30
   ) {}
@@ -12,6 +14,10 @@ export class RefreshSessionUseCase {
   async execute(refreshToken: string) {
     const currentSession = await this.authRepository.findActiveSessionByRefreshToken(refreshToken);
     if (!currentSession) {
+      throw new Error('Invalid refresh token');
+    }
+
+    if (!(await this.usersClient.isUserActive(currentSession.userId))) {
       throw new Error('Invalid refresh token');
     }
 

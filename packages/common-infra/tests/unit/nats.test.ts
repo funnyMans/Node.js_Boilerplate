@@ -3,6 +3,10 @@ import { createDomainEvent } from '@app/contracts';
 import { publishEvent, subscribeTo } from '../../src/nats';
 
 describe('nats transport helpers', () => {
+  const logger = {
+    error: vi.fn(),
+  };
+
   it('publishes a domain event to a subject', async () => {
     const published: {
       subject: string;
@@ -61,7 +65,7 @@ describe('nats transport helpers', () => {
       }),
     } as any;
 
-    subscribeTo(nc, 'app.users.v1.user.created', handler);
+    subscribeTo(nc, 'app.users.v1.user.created', handler, logger);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(handler).toHaveBeenCalledTimes(1);
@@ -70,5 +74,26 @@ describe('nats transport helpers', () => {
       sourceService: 'users-service',
     });
     expect(ack).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs subscription handler failures with subject context', async () => {
+    const handler = vi.fn().mockRejectedValue(new Error('handler failed'));
+    const error = new Error('handler failed');
+    handler.mockRejectedValueOnce(error);
+    const nc = {
+      subscribe: () => ({
+        [Symbol.asyncIterator]: async function* () {
+          yield { data: new TextEncoder().encode('{}') };
+        },
+      }),
+    } as any;
+
+    subscribeTo(nc, 'app.users.v1.user.created', handler, logger);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(logger.error).toHaveBeenCalledWith(
+      { err: error, subject: 'app.users.v1.user.created' },
+      'NATS subscription failed'
+    );
   });
 });

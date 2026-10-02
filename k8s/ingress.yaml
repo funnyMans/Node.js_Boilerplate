@@ -19,10 +19,3 @@ spec:
                 name: api-gateway
                 port:
                   number: 80
-          - path: /users
-            pathType: Prefix
-            backend:
-              service:
-                name: users
-                port:
-                  number: 3001

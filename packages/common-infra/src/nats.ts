@@ -1,9 +1,23 @@
 import { connect, headers, NatsConnection, StringCodec, JSONCodec } from 'nats';
 import type { EventEnvelope } from '@app/contracts';
+import type { InfrastructureLogger } from './redis';
 
-export async function createNatsClient(url?: string): Promise<NatsConnection> {
+export async function createNatsClient(
+  url: string | undefined,
+  logger: InfrastructureLogger
+): Promise<NatsConnection> {
   const nc = await connect({ servers: url ?? process.env.NATS_URL ?? '127.0.0.1:4222' });
-  nc.closed().catch((err) => console.error('NATS closed with error', err));
+  void nc
+    .closed()
+    .then((err) => {
+      if (err) logger.error({ err }, 'NATS connection closed with error');
+    })
+    .catch((error: unknown) => {
+      logger.error(
+        { err: error instanceof Error ? error : new Error(String(error)) },
+        'NATS connection close notification failed'
+      );
+    });
   return nc;
 }
 
@@ -31,7 +45,8 @@ export async function publishEvent<TPayload>(
 export function subscribeTo<TPayload>(
   nc: Pick<NatsConnection, 'subscribe'>,
   subject: string,
-  handler: (event: EventEnvelope<TPayload>) => Promise<void> | void
+  handler: (event: EventEnvelope<TPayload>) => Promise<void> | void,
+  logger: InfrastructureLogger
 ) {
   const sub = nc.subscribe(subject);
 
@@ -44,8 +59,11 @@ export function subscribeTo<TPayload>(
         await (msg as any).ack();
       }
     }
-  })().catch((error) => {
-    console.error(`NATS subscription failed for ${subject}`, error);
+  })().catch((error: unknown) => {
+    logger.error(
+      { err: error instanceof Error ? error : new Error(String(error)), subject },
+      'NATS subscription failed'
+    );
   });
 
   return sub;

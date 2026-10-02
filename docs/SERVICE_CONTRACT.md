@@ -54,8 +54,9 @@ remain the business-level join key and are logged independently of traces.
 This asynchronous path is distinct from a durable message-consumer contract:
 the repository currently has no application NATS consumer. The order-journey
 test subscribes only to verify the event and its W3C headers. The local OTel
-collector logs spans; it does not retain them in a searchable trace backend.
-See [`diagrams.md`](./diagrams.md) for the context boundaries and
+collector exports traces to Tempo, which Grafana can query; trace search and
+retention are not verified by the hosted order-journey job. See
+[`diagrams.md`](./diagrams.md) for the context boundaries and
 [`README_NEXT_STEPS.md`](./README_NEXT_STEPS.md) for the live verification
 status.
 
@@ -143,6 +144,6 @@ docker compose -f infra/docker-compose.dev.yml logs --tail=100 SERVICE
 The script proves the HTTP-facing contract. The opt-in
 [`order journey`](../services/orders/tests/e2e/order-journey.e2e.test.ts) also
 checks trace-context persistence and W3C propagation to NATS when run against
-rebuilt images. Neither check proves collector retention (the local collector
-only logs spans), a real NATS consumer's context extraction, sustained-fault
-alert firing, full recovery behavior, or production secret management.
+rebuilt images. Neither check proves Tempo trace search/retention, a real NATS
+consumer's context extraction, sustained-fault alert firing, full recovery
+behavior, or production secret management.

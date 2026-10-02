@@ -1,9 +1,9 @@
 # Contributing
 
-This repository uses a small, protected branch flow so changes are tested
-before they reach the production-designated `main` branch. `main` remains the
-default branch and is the public stable line; this repository does not deploy
-from it automatically.
+This repository is a learning lab, not a production product or deployment
+template. The branch flow provides a safe way to study change promotion and
+preserve history; `main` is the stable reference line and is not a deployment
+target.
 
 ## Branch flow
 
@@ -12,34 +12,35 @@ feature/*, fix/*, chore/* ── pull request ──> dev
                                              │
                                              └── promotion pull request ──> stage
                                                                             │
-                                                                            └── release pull request ──> main
+                                                                            └── promotion pull request ──> main
 ```
 
 - Create normal feature, fix, and maintenance branches from `dev`. Open their
   pull requests against `dev`.
 - Promote a tested set of changes from `dev` to `stage` with a pull request.
-  Use `stage` for release-candidate verification and stabilization; do not
-  treat it as a deployment target.
+  Use `stage` to practice integration and stabilization; it is not a deployment
+  target.
 - Promote a verified candidate from `stage` to `main` with a pull request.
-  `main` is the stable, production-designated branch.
+  `main` is the stable reference snapshot of the learning lab.
 - Merge ordinary feature/fix/maintenance PRs with squash. Merge promotion PRs
   (`dev` -> `stage`, `stage` -> `main`) with a merge commit so the source
   commits remain ancestors of the destination and later promotions contain
   only new work.
-- If a release-candidate-only fix is needed, make a focused fix branch from
-  `stage`, merge it into `stage`, then merge `stage` back into `dev` before
-  the next promotion so the tested branch histories remain aligned.
-- For an urgent production-line fix, branch from `main`, open a pull request
-  to `main`, and then merge `main` into `stage` and `dev` to forward-port the
-  fix while preserving ancestry.
+- If a `stage`-only fix is needed, make a focused fix branch from `stage`,
+  merge it into `stage`, then merge `stage` back into `dev` before the next
+  promotion so the branch histories remain aligned.
+- For a fix that must first land on the stable `main` line, branch from
+  `main`, open a pull request to `main`, and then merge `main` into `stage` and
+  `dev` to forward-port it while preserving ancestry.
 - Do not push directly to `main`, `stage`, or `dev`, or force-push them.
 
-GitHub protects the three integration branches with required pull requests,
-resolved review conversations, and all required CI checks. Promotion merge
-commits are enabled to preserve GitFlow ancestry. Approving reviews are not
-currently required because the repository has one maintainer; add a second
-maintainer and enable required approval before accepting outside contributions
-that need independent review.
+GitHub protects all three branches with required pull requests and resolved
+review conversations. Non-fast-forward updates and deletion are blocked.
+Required CI checks remain enabled for `stage` and `main`; they are temporarily
+exempted on `dev` while automatic CI is paused there. This exception does not
+remove the pull-request or history protections. Promotion merge commits
+preserve branch ancestry. Approving reviews are not currently required because
+the repository has one maintainer.
 
 ## Pull request requirements
 
@@ -48,9 +49,14 @@ that need independent review.
 - Keep a pull request focused. Include the reason, behavior change, and
   verification evidence in its description.
 - Resolve every review conversation before merge.
-- Keep all required CI checks green. The current checks cover workspace build,
-  lint, unit tests, ETL unit tests, Compose configuration, sequential image
-  builds, the six-service contract probe, and the order journey.
+- For PRs targeting `dev`, run the relevant local checks and include their
+  results; CI is temporarily not triggered for those PRs. PRs targeting
+  `stage` or `main` must pass the required checks: workspace build, lint, unit
+  tests, ETL unit tests, Compose configuration, sequential image builds, the
+  six-service contract probe, and the order journey.
+- Keep changes focused on a learning goal or on making the current system
+  more understandable, reliable, or verifiable. Explain the problem, the
+  chosen design, a simpler alternative, and how the result was verified.
 - Update directly affected operating guides, architecture diagrams, and
   roadmap status in the same pull request.
 - Never include `.env` files, credentials, generated clients, caches, or
@@ -75,17 +81,14 @@ docker compose -f infra/docker-compose.dev.yml -f infra/docker-compose.e2e.yml c
 
 The CI Compose integration job additionally builds each image sequentially,
 starts the E2E dependency graph without rebuilding, probes service contracts,
-seeds the S3 mock, and runs the order journey. It is the authoritative
-integration check; see [`infra/README.md`](infra/README.md) for the local
+seeds the S3 mock, and runs the order journey. It is required for PRs targeting
+`stage` and `main`; see [`infra/README.md`](infra/README.md) for the local
 operator procedure.
 
-## Releases and versioning
+## Deployment and future learning topics
 
-There is no automated deployment or release process. Treat the repository as
-one public boilerplate product and use Semantic Versioning for releases from
-`main`: patch for compatible fixes, minor for compatible additions, and major
-for breaking changes. Choose and document the next version in the promotion
-pull request from `stage` to `main`; update the root project version and any
-published package versions affected by the release. Create a `vX.Y.Z` tag
-only after the verified promotion PR has merged. Do not imply that a GitHub
-release deploys the application.
+There is no deployment or release target. Kubernetes, GraphQL/Apollo
+Federation, RabbitMQ, AI agents, and other technologies may become future
+learning exercises, but they are not implementation commitments. Before
+adding one, document the learning objective, the simpler alternative, the
+complexity it introduces, and the evidence that will demonstrate the concept.

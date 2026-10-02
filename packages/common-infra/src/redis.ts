@@ -1,9 +1,12 @@
 import IORedis from 'ioredis';
 
-export function createRedisClient(url?: string) {
+export interface InfrastructureLogger {
+  error: (obj: { err: Error; subject?: string }, message: string) => void;
+}
+
+export function createRedisClient(url: string | undefined, logger: InfrastructureLogger) {
   const redis = new IORedis(url ?? process.env.REDIS_URL ?? 'redis://127.0.0.1:6379');
-  // Basic error logging
-  redis.on('error', (err) => console.error('Redis error', err));
+  redis.on('error', (err) => logger.error({ err }, 'Redis error'));
   return redis;
 }
 

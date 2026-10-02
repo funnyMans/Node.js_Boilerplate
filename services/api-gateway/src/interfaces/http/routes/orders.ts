@@ -50,9 +50,18 @@ export function registerOrderRoutes(
       const url = queryString
         ? `${ordersServiceUrl}/orders?${queryString}`
         : `${ordersServiceUrl}/orders`;
+      const requestContext = getDownstreamRequestContext(request);
       const response = await fetch(url, {
-        headers: { 'x-authenticated-user-id': session.userId },
+        headers: {
+          'x-authenticated-user-id': session.userId,
+          ...requestContext,
+        },
       });
+      const correlationId =
+        response.headers.get('x-correlation-id') ?? requestContext['x-correlation-id'];
+      reply.header('x-correlation-id', correlationId);
+      const traceId = response.headers.get('x-trace-id');
+      if (traceId) reply.header('x-trace-id', traceId);
       return reply.code(response.status).send(await response.json());
     } catch (error) {
       server.log.error({ err: error }, 'orders service request failed');
@@ -66,9 +75,18 @@ export function registerOrderRoutes(
     const { id } = request.params as { id: string };
 
     try {
+      const requestContext = getDownstreamRequestContext(request);
       const response = await fetch(`${ordersServiceUrl}/orders/${encodeURIComponent(id)}`, {
-        headers: { 'x-authenticated-user-id': session.userId },
+        headers: {
+          'x-authenticated-user-id': session.userId,
+          ...requestContext,
+        },
       });
+      const correlationId =
+        response.headers.get('x-correlation-id') ?? requestContext['x-correlation-id'];
+      reply.header('x-correlation-id', correlationId);
+      const traceId = response.headers.get('x-trace-id');
+      if (traceId) reply.header('x-trace-id', traceId);
       return reply.code(response.status).send(await response.json());
     } catch (error) {
       server.log.error({ err: error }, 'orders service request failed');

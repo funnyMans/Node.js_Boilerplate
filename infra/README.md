@@ -13,30 +13,33 @@ ETL, and monitoring fit together, see
 
 Compose creates one private network and starts these services:
 
-| Role                         | Compose service(s)                                                        | Notes                                                                                                                              |
-| ---------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Persistent state             | `postgres`, `redis`                                                       | Postgres hosts separate application databases; Redis is shared by the local services.                                              |
-| Messaging and orchestration  | `nats`, `temporal`                                                        | Orders publishes outbox events to NATS and dispatches fulfillment work to Temporal.                                                |
-| HTTP applications            | `api-gateway`, `users`, `auth-service`, `orders`, `payments`, `inventory` | The gateway is the public application entry point. Internal services use Compose DNS names.                                        |
-| Local object storage and ETL | `s3-mock`, `s3-mock-init`, `dagster`                                      | Moto is an in-memory S3-compatible endpoint. The init job seeds buckets and sample events, then exits.                             |
-| Monitoring                   | `prometheus`, `grafana`, `otel-collector`                                 | Prometheus scrapes all six HTTP-service metrics endpoints; Grafana reads Prometheus; the collector currently logs received traces. |
-| Edge proxy                   | `nginx`                                                                   | Exposes the local proxy on port 8080 and forwards requests to the gateway or users service.                                        |
+| Role                         | Compose service(s)                                                        | Notes                                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Persistent state             | `postgres`, `redis`                                                       | Postgres hosts separate application databases; Redis is shared by the local services.                             |
+| Messaging and orchestration  | `nats`, `temporal`                                                        | Orders publishes outbox events to NATS and dispatches fulfillment work to Temporal.                               |
+| HTTP applications            | `api-gateway`, `users`, `auth-service`, `orders`, `payments`, `inventory` | The gateway is the only published application entry point. Internal services use Compose DNS names.               |
+| Local object storage and ETL | `s3-mock`, `s3-mock-init`, `dagster`                                      | Moto is an in-memory S3-compatible endpoint. The init job seeds buckets and sample events, then exits.            |
+| Monitoring                   | `prometheus`, `grafana`, `otel-collector`, `tempo`                        | Prometheus scrapes service metrics; the collector forwards traces to Tempo; Grafana provisions both data sources. |
+| Edge proxy                   | `nginx`                                                                   | Exposes the local proxy on port 8080 and forwards application requests to the gateway.                            |
 
 The configured host ports are:
 
-|              Host port | Service                                                                  |
-| ---------------------: | ------------------------------------------------------------------------ |
-|                   8080 | Nginx                                                                    |
-|                   3000 | API gateway                                                              |
-|                   3001 | Users                                                                    |
-|                   3002 | Auth service                                                             |
-|                   3004 | Dagster UI                                                               |
-|                   3005 | Grafana                                                                  |
-|       3003, 3010, 3011 | Orders, payments, inventory (container ports; not published to the host) |
-| 4222, 5432, 6379, 7233 | NATS, Postgres, Redis, Temporal                                          |
-|             4317, 4318 | OTLP gRPC and HTTP receivers                                             |
-|                   9000 | Moto S3-compatible endpoint                                              |
-|                   9090 | Prometheus                                                               |
+|              Host port | Service                                                                         |
+| ---------------------: | ------------------------------------------------------------------------------- |
+|                   8080 | Nginx                                                                           |
+|                   3000 | API gateway                                                                     |
+|                   3002 | Auth service                                                                    |
+|                   3004 | Dagster UI                                                                      |
+|                   3005 | Grafana                                                                         |
+| 3001, 3003, 3010, 3011 | Users, orders, payments, inventory (container ports; not published to the host) |
+| 4222, 5432, 6379, 7233 | NATS, Postgres, Redis, Temporal                                                 |
+|             4317, 4318 | OTLP gRPC and HTTP receivers                                                    |
+|                   9000 | Moto S3-compatible endpoint                                                     |
+|                   9090 | Prometheus                                                                      |
+
+Tempo's query API listens on container port `3200` and is intentionally not
+published to the host. Browse traces in Grafana at `http://localhost:3005` under
+**Explore → Tempo**. The local Tempo volume retains traces for 48 hours.
 
 ## Local environment values
 
@@ -101,11 +104,11 @@ Inspect every container, including completed one-shot jobs:
 docker compose -f infra/docker-compose.dev.yml ps --all
 ```
 
-Then check the public health endpoints:
+Then check the public proxy and gateway readiness, including the users dependency:
 
 ```bash
 curl -fsS http://127.0.0.1:8080/health
-curl -fsS http://127.0.0.1:3001/health
+curl -fsS http://127.0.0.1:3000/ready
 ```
 
 The Makefile offers the same quick checks with `make status` and `make health`.
@@ -233,16 +236,16 @@ outages, drain an active Temporal task, or stress the 500-row retention batch.
 
 Current health-check coverage in Compose:
 
-| Services                                                       | What the configured check establishes                                                                                                |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `postgres`, `redis`, `nats`                                    | The respective database, cache, or broker check responds.                                                                            |
-| `users`, `orders`, `payments`, `inventory`                     | The service's `/ready` endpoint succeeds.                                                                                            |
-| `api-gateway`                                                  | Its `/ready` endpoint succeeds, including its checked dependencies.                                                                  |
-| `auth-service`                                                 | Its `/health` endpoint returns successfully; this is not the same as a Compose `/ready` check.                                       |
-| `dagster`                                                      | Its container accepts a TCP connection on port 3000. This is a port check, not a full ETL materialization test.                      |
-| `s3-mock`                                                      | A TCP listener check confirms the local Moto endpoint accepts connections; this does not validate S3 credentials or bucket contents. |
-| `temporal`, `nginx`, `prometheus`, `grafana`, `otel-collector` | No Docker health check is configured in this Compose file.                                                                           |
-| `s3-mock-init`                                                 | Compose waits for successful process completion, not a long-running health state.                                                    |
+| Services                                                                | What the configured check establishes                                                                                                |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `postgres`, `redis`, `nats`                                             | The respective database, cache, or broker check responds.                                                                            |
+| `users`, `orders`, `payments`, `inventory`                              | The service's `/ready` endpoint succeeds.                                                                                            |
+| `api-gateway`                                                           | Its `/ready` endpoint succeeds, including its checked dependencies.                                                                  |
+| `auth-service`                                                          | Its `/health` endpoint returns successfully; this is not the same as a Compose `/ready` check.                                       |
+| `dagster`                                                               | Its container accepts a TCP connection on port 3000. This is a port check, not a full ETL materialization test.                      |
+| `s3-mock`                                                               | A TCP listener check confirms the local Moto endpoint accepts connections; this does not validate S3 credentials or bucket contents. |
+| `temporal`, `nginx`, `prometheus`, `grafana`, `otel-collector`, `tempo` | No Docker health check is configured in this Compose file.                                                                           |
+| `s3-mock-init`                                                          | Compose waits for successful process completion, not a long-running health state.                                                    |
 
 The orders service's `/ready` endpoint checks PostgreSQL. Its `/health`
 endpoint also reports NATS and Temporal, but neither endpoint exposes the
@@ -276,9 +279,9 @@ intentionally want a clean local reset.
   older than five minutes, and a 5xx-rate expression.
 - Grafana is provisioned with Prometheus as its data source and the local
   dashboard directory.
-- The OpenTelemetry collector accepts OTLP traces and uses a logging exporter.
-  This setup is useful for local inspection, but it is not a persistent trace
-  backend or a distributed trace UI.
+- The OpenTelemetry collector accepts OTLP traces and exports them to Tempo.
+  Tempo stores local traces for 48 hours; Grafana provisions Tempo as a data
+  source so traces can be searched in **Explore → Tempo**.
 - All six HTTP services using the shared tracing bootstrap are configured to
   export OTLP/HTTP traces to the collector. The local Compose file sets
   `NODE_ENV=development` explicitly because the service images default to
