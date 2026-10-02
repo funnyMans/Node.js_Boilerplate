@@ -89,9 +89,11 @@ export function registerUserRoutes(
     const isProfileUpdate =
       Object.keys(body).length > 0 &&
       Object.keys(body).length === Object.keys(profileUpdate).length;
-    const isAdminBan = body.status === 'blocked' && userAccessPolicy.canBanUser(session.role);
+    const isAdminStatusChange =
+      (body.status === 'blocked' || body.status === 'active') &&
+      userAccessPolicy.canBanUser(session.role);
 
-    if ((!canUpdateTarget || !isProfileUpdate) && !isAdminBan) {
+    if ((!canUpdateTarget || !isProfileUpdate) && !isAdminStatusChange) {
       const error: ForbiddenError = { code: 'FORBIDDEN', message: 'User access denied' };
       return reply.code(403).send(error);
     }
@@ -105,7 +107,7 @@ export function registerUserRoutes(
           'x-authenticated-user-id': session.userId,
           ...requestContext,
         },
-        body: JSON.stringify(isAdminBan ? { status: 'blocked' } : profileUpdate),
+        body: JSON.stringify(isAdminStatusChange ? { status: body.status } : profileUpdate),
       });
 
       if (!res.ok) {
