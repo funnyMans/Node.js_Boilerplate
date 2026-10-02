@@ -34,12 +34,13 @@ export class HttpUsersClient implements UsersClientPort {
       if (response.status === 404) return false;
       if (!response.ok) throw new UsersServiceUnavailableError();
 
-      const user = (await response.json()) as { status?: unknown };
+      const user = (await response.json()) as { isActive?: unknown; status?: unknown };
+      if (typeof user.isActive !== 'boolean') throw new UsersServiceUnavailableError();
       if (user.status !== 'active' && user.status !== 'blocked' && user.status !== 'deleted') {
         throw new UsersServiceUnavailableError();
       }
 
-      return user.status === 'active';
+      return user.isActive && user.status === 'active';
     } catch (error) {
       if (error instanceof UsersServiceUnavailableError) throw error;
       throw new UsersServiceUnavailableError();
