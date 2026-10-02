@@ -68,4 +68,36 @@ describe('api gateway user routes', () => {
     );
     await server.close();
   });
+
+  it.each(['blocked', 'active'] as const)(
+    'allows an admin to change user status to %s',
+    async (status) => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ id: 'user-2', status }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      const adminSession = { ...session, role: 'admin' as const };
+      const server = createTestServer({ validateSession: async () => adminSession });
+
+      const response = await server.inject({
+        method: 'PATCH',
+        url: '/users/user-2',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { status },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://users.internal:3001/users/user-2',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ status }),
+        })
+      );
+      await server.close();
+    }
+  );
 });
