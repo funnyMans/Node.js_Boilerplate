@@ -2,9 +2,10 @@
 
 These diagrams show the current local development stack described by
 [`infra/docker-compose.dev.yml`](../infra/docker-compose.dev.yml). They are
-kept deliberately separate from future production choices: AWS services,
+kept deliberately separate from optional future learning topics: AWS services,
 durable NATS consumers, notifications, and shipping are not implied by these
-local diagrams.
+local diagrams. They describe what is configured locally, not a production
+deployment.
 
 Editable Mermaid sources used by the diagram renderer are in
 [`diagrams-src/`](./diagrams-src/). The SVG output directory is generated and
@@ -58,9 +59,11 @@ flowchart LR
 
 Solid arrows represent application or data dependencies in the local
 configuration. Dotted arrows represent configured monitoring paths; Prometheus
-scrapes all six HTTP services, and the collector logs traces rather than storing
-them in a trace-search interface. The shared HTTP metrics helper keeps metric
-names, labels, and response format consistent across those services.
+scrapes all six HTTP services, and the collector exports traces to Tempo.
+Grafana can query both Prometheus metrics and Tempo traces. Tempo retains local
+traces for a bounded period; this path is configured but not covered by the
+hosted order-journey CI job. The shared HTTP metrics helper keeps metric names,
+labels, and response format consistent across those services.
 
 For `POST /orders`, W3C trace context is passed from the gateway to the orders
 service and the downstream trace ID is returned to the caller. The order and
@@ -121,9 +124,9 @@ HTTP span: they create independent child spans from the persisted W3C context.
 Temporal receives its context in workflow input (the current Temporal client
 contract does not provide generic workflow headers here). Activity HTTP calls
 inject their child span context so payments and inventory can continue the
-trace. The local OTel collector logs spans rather than retaining them in a
-searchable trace store, and there is no application NATS consumer in this
-repository.
+trace. Grafana/Tempo provide local trace search, but the order-journey CI check
+does not verify trace search or retention. There is no application NATS
+consumer in this repository.
 
 ## Health, dependencies, and completion
 

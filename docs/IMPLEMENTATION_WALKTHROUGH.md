@@ -1,6 +1,9 @@
 # What Has Been Built: A Guided System Walkthrough
 
-This guide describes the implementation completed so far in plain language: what the starting point was, what changed, how the pieces communicate, what each request waits for, and what must be checked before treating the system as production-ready.
+This guide explains the current learning system in plain language: how the
+pieces communicate, what each request waits for, what can fail, and how to
+inspect the evidence. This repository is not a production-ready application or
+deployment template.
 
 It describes the code in this repository, not a claim that every planned external service or production operation is complete.
 
@@ -303,7 +306,7 @@ export create child spans; Temporal start creates a child span and passes its
 context in workflow input; activity spans inject their context into payment
 and inventory HTTP calls. Correlation IDs remain the business-level join key
 in each structured log. Baggage is deliberately excluded from durable storage.
-The local collector logs spans but does not provide trace search, and the
+The local collector exports spans to Tempo, which Grafana can query; the
 repository has no application NATS consumer.
 
 The orders `/metrics` endpoint computes bounded-cardinality signals from the
@@ -372,21 +375,21 @@ behavior. They do not simulate actual NATS, Temporal, or S3 outages, exercise
 shutdown while a Temporal activity is actively draining, or stress the
 500-row retention batch limit.
 
-- Prometheus reported all six HTTP service targets up; payments/inventory down alerts and the order outbox rules were loaded. Grafana served the dashboard query including all six services. The orders backlog and failed-event gauges were zero after the journey, and the OTel collector logged exported spans.
-- Nginx, Dagster, Prometheus, Grafana, and OTel collector were included in the full-stack run; all configured health checks passed. Temporal and the collector were running but have no Compose health check. Alert firing under a deliberately induced failure is still unverified, and the collector has no searchable trace store.
+- Prometheus reported all six HTTP service targets up; payments/inventory down alerts and the order outbox rules were loaded. Grafana served the dashboard query including all six services. The orders backlog and failed-event gauges were zero after the journey.
+- Nginx, Dagster, Prometheus, Grafana, the OTel collector, and Tempo were included in the full-stack run; all configured health checks passed. Temporal, the collector, and Tempo have no Compose health check. Alert firing under a deliberately induced failure is still unverified; Grafana/Tempo trace search is configured but is not part of the CI order-journey check.
 - A prior Compose stop produced exit code 137 for several app containers with Docker reporting `OOMKilled=false`; the gateway logged an aggregated cleanup failure and exited 1. This is an unresolved shutdown/lifecycle issue, not evidence of an OOM kill. The later E2E run itself remained healthy.
 - A real order was submitted to the running orders service. Its event appeared in the raw bucket, and the database recorded raw export completion.
 - Dagster materialized the date partition, and the resulting Parquet contained the new order item alongside the seeded rows.
 
-For current setup instructions and commands, use [`README.md`](../README.md) and [`docs/etl.md`](./etl.md).
+For the learning path and current setup instructions, use [`README.md`](../README.md), [`../infra/README.md`](../infra/README.md), and [`etl.md`](./etl.md).
 
-## What is not finished yet
+## Boundaries and unverified behavior
 
-- **Production payment/inventory integrations:** local payment and inventory HTTP services exist, but external provider integrations and production inventory sources are not included.
+- **Real external integrations:** local payment and inventory HTTP services exist, but external provider integrations and production inventory sources are not included.
 - **Notifications and shipping:** no notification or shipment workflow activities are implemented.
 - **Automated ETL scheduling:** the sample Dagster asset is runnable, but the current local guide materializes a partition manually. There is no demonstrated production schedule, event trigger, or late-arriving-data policy.
-- **Production object storage:** local Moto is in-memory; it is a test/dev compatibility layer, not durable storage. Restarting it discards buckets and objects until `s3-mock-init` runs again.
-- **Production infrastructure and delivery:** CI/CD workflows, CDK stacks, production IAM/secrets/network policy, and deployment automation remain roadmap work.
+- **Durable object storage:** local Moto is in-memory; it is a test/dev compatibility layer, not durable storage. Restarting it discards buckets and objects until `s3-mock-init` runs again.
+- **Deployment:** no production infrastructure or delivery pipeline is part of this learning lab. Kubernetes manifests are examples for study, not a supported deployment.
 - **Operational automation:** terminal NATS, workflow-start, and raw-export
   delivery signals now have separate metrics/alerts and the delivery requeue
   procedure is documented. A controlled database-state drill drove each

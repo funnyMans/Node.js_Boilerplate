@@ -1,10 +1,46 @@
-# Node.js Infra Boilerplate
+# Node.js Microservices Learning Lab
 
-This repository is a learning-focused monorepo for building production-ready Node.js microservices. It includes docs and scaffolding for Fastify services, tRPC, Apollo Federation, Prisma, Dagster (ETL), and Temporal (workflows) — focused on developer learning.
+This repository is a hands-on learning lab for understanding how a
+microservices system is designed, built, run, tested, and observed. Its goal is
+to help learners reason about service boundaries, data ownership, messaging,
+workflows, failure handling, and operational signals—not to provide a
+production-ready product or encourage microservices for every application.
+
+The running example is a local order-processing system built from separate
+Node.js services. It deliberately brings together tools such as PostgreSQL,
+Redis, NATS, Temporal, Dagster, Prometheus, Grafana, OpenTelemetry, and Tempo
+so their roles and trade-offs can be studied as one connected system.
+
+This is not a deployable production template. The local stack uses development
+adapters and mocks, and its Kubernetes manifests are study material rather
+than a supported deployment. Deployment is not a current project goal.
 
 This project is available under the [MIT License](./LICENSE).
 
-Study the system through [`docs/diagrams.md`](./docs/diagrams.md) (current flows and service relationships), [`docs/IMPLEMENTATION_WALKTHROUGH.md`](./docs/IMPLEMENTATION_WALKTHROUGH.md) (implementation details and boundaries), [`infra/README.md`](./infra/README.md) (how to build, run, and verify the local stack), and [`docs/README_NEXT_STEPS.md`](./docs/README_NEXT_STEPS.md) (phased quality roadmap). [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) records broader design choices and future directions.
+## Learning path
+
+Read the guides in this order; each one answers a different kind of question:
+
+1. [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md): what the system is for,
+   what is actually implemented, and how to evaluate future design choices.
+2. [`docs/diagrams.md`](./docs/diagrams.md): how the services and data flows
+   connect, including the synchronous order request and its asynchronous work.
+3. [`docs/IMPLEMENTATION_WALKTHROUGH.md`](./docs/IMPLEMENTATION_WALKTHROUGH.md):
+   what happens step by step and where the important boundaries are.
+4. [`infra/README.md`](./infra/README.md): how to build, start, inspect, and
+   stop the local stack, and what its health signals do and do not prove.
+5. [`docs/SERVICE_CONTRACT.md`](./docs/SERVICE_CONTRACT.md): the common service
+   endpoints, trace context, readiness, and verification limits.
+6. Follow a specific tool or scenario in
+   [`docs/orders_workflow.md`](./docs/orders_workflow.md),
+   [`docs/temporal.md`](./docs/temporal.md), [`docs/etl.md`](./docs/etl.md),
+   and [`docs/README_NEXT_STEPS.md`](./docs/README_NEXT_STEPS.md).
+
+For a useful study exercise, follow one order from the HTTP response through
+the outbox, NATS, Temporal, payment/inventory, raw object export, and Dagster.
+Then use the logs, trace in Grafana/Tempo, and Prometheus metrics to answer
+different questions about the same journey. The guides call out where evidence
+is live-verified and where it is only documented or configured.
 
 Quick start (dev with Docker Compose)
 -------------------------------------
@@ -44,18 +80,13 @@ work; `Exited (0)` is success, not a failed long-running service. Use
 containers as well as running ones. For the difference between process state,
 health checks, and readiness, see the operations guide.
 
-Kubernetes (apply manifests)
-----------------------------
+Kubernetes manifests (study material)
+--------------------------------------
 
-Apply the prepared k8s manifests to your cluster (requires kubectl configured):
-
-```bash
-# applies namespace + all manifests in k8s/
-make k8s-apply
-
-# tear down
-make k8s-down
-```
+The repository contains example Kubernetes manifests, but they are not a
+validated deployment path and are not required to run or study the local
+Compose system. Use them to learn how Kubernetes resources express desired
+state; do not treat them as production-ready configuration.
 
 Configuration
 -------------
@@ -119,19 +150,24 @@ failures also trigger resource cleanup.
 Docker images and CI
 --------------------
 
-Images are built locally by the Makefile targets. Automated CI and image
-publishing are intentionally deferred until local checks and service contracts
-are repeatable. Deployment and registry configuration follow that work rather
-than being part of the initial repository setup.
+Images are built locally by the Makefile targets. GitHub Actions validates
+builds, lint, tests, Compose configuration, service contracts, and the order
+journey on pull requests targeting `stage` or `main`, and on pushes to those
+branches. Automatic CI for pushes and pull requests targeting `dev` is
+temporarily paused while the learning lab is being reorganized; branch
+protections still require pull requests and preserve history. The workflow can
+also be dispatched manually. CI is a learning and regression tool, not a
+deployment pipeline.
 
 What's next
 -----------
 
-- Keep unit, integration, and end-to-end tests in their dedicated `tests/`
-  subfolders. `pnpm test` runs dependency-independent unit tests;
-  `pnpm test:integration` runs users API tests requiring local PostgreSQL and
-  Redis, while `pnpm test:all` runs the complete configured suite.
-- After local verification is stable, initialize the remote repository and add
-  staged CI checks for Compose validation, tests, builds, service contracts,
-  and the order journey.
-- Choose deployment, CI/CD delivery, and production secret management later.
+- Pause new services and product functionality while we study and document the
+  configured system end to end.
+- Make the major scenarios, failure boundaries, logs, traces, metrics, and
+  recovery procedures understandable before starting new infrastructure
+  experiments.
+- Treat Kubernetes, GraphQL/Apollo Federation, RabbitMQ, and AI agents as
+  possible future learning topics—not approved additions or commitments.
+- Keep deployment out of scope until there is a specific learning reason to
+  revisit it.

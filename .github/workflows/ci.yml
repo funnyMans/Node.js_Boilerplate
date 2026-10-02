@@ -5,8 +5,10 @@ on:
     branches:
       - main
       - stage
-      - dev
   pull_request:
+    branches:
+      - main
+      - stage
   workflow_dispatch:
 
 permissions:
