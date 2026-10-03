@@ -21,6 +21,8 @@ export const config = createConfig({
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
   RAW_EVENTS_BUCKET: z.string().min(1).default('raw'),
+  S3_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  S3_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(10000),
 });
 
 if (config.NODE_ENV === 'production' && config.SERVICE_TO_SERVICE_TOKEN === localServiceToken) {

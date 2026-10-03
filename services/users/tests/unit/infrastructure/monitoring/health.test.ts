@@ -8,7 +8,7 @@ describe('users dependency health', () => {
   it('returns ok when the database responds', async () => {
     const status = await checkDatabaseHealth({
       $queryRaw: async () => [{ ok: 1 }],
-    } as any);
+    });
 
     expect(status).toBe('ok');
   });
@@ -18,7 +18,7 @@ describe('users dependency health', () => {
       $queryRaw: async () => {
         throw new Error('db unavailable');
       },
-    } as any);
+    });
 
     expect(status).toBe('down');
   });

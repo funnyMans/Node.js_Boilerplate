@@ -131,10 +131,13 @@ Authenticated clients can create orders and read only their own orders through t
 - `GET /orders/{id}`
 
 The orders service persists each order and its `orders.order.created` event in one database
-transaction. An outbox worker publishes pending events to NATS and retries failures. A database-backed
-dispatcher starts the Temporal fulfillment workflow, which calls payment and inventory HTTP
-services with idempotency keys. Local payment and inventory HTTP services are included in the
-Compose stack; production provider integrations are not. Configure `PAYMENT_SERVICE_URL`,
+transaction. An outbox worker publishes pending events to file-backed JetStream and marks them
+published only after a broker acknowledgement; event IDs deduplicate retries within the stream's
+bounded window. A separate database-backed dispatcher starts the Temporal fulfillment workflow
+only after NATS publication is recorded, while raw S3 export retries independently. JetStream
+acceptance is not consumer processing: there is no application NATS consumer yet. The workflow
+calls payment and inventory HTTP services with idempotency keys. Local payment and inventory HTTP
+services are included in the Compose stack; production provider integrations are not. Configure `PAYMENT_SERVICE_URL`,
 `INVENTORY_SERVICE_URL`, `TEMPORAL_ADDRESS`, and `TEMPORAL_TASK_QUEUE` when using alternate
 endpoints. Workflows retry transient failures while dependencies are unavailable. Prices are not
 accepted from the client.

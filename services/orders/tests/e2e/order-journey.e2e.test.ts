@@ -4,7 +4,9 @@ import 'dotenv/config';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Client, Connection } from '@temporalio/client';
 import { connect, JSONCodec, type NatsConnection, type Subscription } from 'nats';
+import { authRoles, eventTypes, orderStatuses } from '@app/contracts';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 const e2e = process.env.E2E_ORDER_JOURNEY === '1' ? describe : describe.skip;
 const gatewayUrl = process.env.ORDER_JOURNEY_GATEWAY_URL ?? 'http://127.0.0.1:3000';
@@ -16,35 +18,59 @@ const s3AccessKeyId = process.env.LOCAL_S3_ACCESS_KEY_ID ?? 'minioadmin';
 const s3SecretAccessKey = process.env.LOCAL_S3_SECRET_ACCESS_KEY ?? 'minioadmin';
 const timeoutMs = 90_000;
 
-type OrderJourneyEvent = {
-  eventId: string;
-  eventType: string;
-  correlationId: string;
-  occurredAt: string;
-  payload: {
-    orderId: string;
-    userId: string;
-    items: Array<{ productId: string; quantity: number }>;
-  };
-};
+const orderItemsSchema = z.array(
+  z.object({
+    productId: z.string().min(1),
+    quantity: z.number().int().positive(),
+  })
+);
 
-type OutboxSnapshot = {
-  id: string;
-  status: string;
-  publishedAt: string | null;
-  workflowStartedAt: string | null;
-  rawExportedAt: string | null;
-  traceContext: { traceparent?: string } | null;
-  event: OrderJourneyEvent;
-};
+const sessionSchema = z.object({
+  accessToken: z.string().min(1),
+  refreshToken: z.string().min(1),
+  userId: z.string().min(1),
+  role: z.enum(authRoles),
+  expiresAt: z.iso.datetime(),
+});
 
-type Session = { accessToken: string; userId: string };
-type JourneyOrder = {
-  id: string;
-  status: string;
-  userId: string;
-  items: Array<{ productId: string; quantity: number }>;
-};
+const journeyOrderSchema = z.object({
+  id: z.uuid(),
+  status: z.enum(orderStatuses),
+  userId: z.string().min(1),
+  items: orderItemsSchema,
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+const orderJourneyEventSchema = z.object({
+  eventId: z.uuid(),
+  eventType: z.literal(eventTypes.orderCreated),
+  sourceService: z.literal('orders-service'),
+  correlationId: z.string().min(1),
+  occurredAt: z.iso.datetime(),
+  version: z.number().int().positive(),
+  retryable: z.boolean(),
+  payload: z.object({
+    orderId: z.uuid(),
+    userId: z.string().min(1),
+    items: orderItemsSchema,
+  }),
+});
+
+const outboxSnapshotSchema = z.object({
+  id: z.uuid(),
+  status: z.enum(['PENDING', 'PROCESSING', 'PUBLISHED', 'FAILED']),
+  publishedAt: z.iso.datetime().nullable(),
+  workflowStartedAt: z.iso.datetime().nullable(),
+  rawExportedAt: z.iso.datetime().nullable(),
+  traceContext: z.object({ traceparent: z.string().optional() }).passthrough().nullable(),
+  event: orderJourneyEventSchema,
+});
+
+type OrderJourneyEvent = z.infer<typeof orderJourneyEventSchema>;
+type OutboxSnapshot = z.infer<typeof outboxSnapshotSchema>;
+type Session = z.infer<typeof sessionSchema>;
+type JourneyOrder = z.infer<typeof journeyOrderSchema>;
 
 async function waitFor<T>(
   description: string,
@@ -121,7 +147,7 @@ function readOutboxEvent(correlationId: string): OutboxSnapshot | null {
     LIMIT 1
   `;
   const result = queryDatabase('orders', query);
-  return result ? (JSON.parse(result) as OutboxSnapshot) : null;
+  return result ? outboxSnapshotSchema.parse(JSON.parse(result)) : null;
 }
 
 function readPaymentStatus(orderId: string): string | null {
@@ -144,7 +170,7 @@ async function readNatsEvent(
 ): Promise<{ event: OrderJourneyEvent; traceparent: string | undefined }> {
   for await (const message of subscription) {
     return {
-      event: JSONCodec<OrderJourneyEvent>().decode(message.data),
+      event: orderJourneyEventSchema.parse(JSONCodec<unknown>().decode(message.data)),
       traceparent: message.headers?.get('traceparent') || undefined,
     };
   }
@@ -179,7 +205,7 @@ async function createAndObserveOrder(
     expect(response.headers.get('x-correlation-id')).toBe(correlationId);
     expect(response.headers.get('x-trace-id')).toBe(traceId);
 
-    const order = (await response.json()) as JourneyOrder;
+    const order = journeyOrderSchema.parse(await response.json());
     expect(order).toMatchObject({ userId: session.userId, status: 'pending', items });
 
     const [natsMessage, outbox] = await Promise.all([
@@ -262,14 +288,16 @@ e2e('authenticated order journey across local services', () => {
         body: JSON.stringify({ email, password }),
       });
       expect(login.status).toBe(200);
-      const session = (await login.json()) as Session;
+      const session = sessionSchema.parse(await login.json());
 
       const setupIntentResponse = await fetch(
         `${gatewayUrl}/payments/payment-methods/setup-intents`,
         { method: 'POST', headers: { authorization: `Bearer ${session.accessToken}` } }
       );
       expect(setupIntentResponse.status).toBe(200);
-      const setupIntent = (await setupIntentResponse.json()) as { setupIntentId: string };
+      const setupIntent = z
+        .object({ setupIntentId: z.string().min(1), clientSecret: z.string().min(1) })
+        .parse(await setupIntentResponse.json());
 
       const setDefaultPaymentMethod = await fetch(
         `${gatewayUrl}/payments/payment-methods/default`,

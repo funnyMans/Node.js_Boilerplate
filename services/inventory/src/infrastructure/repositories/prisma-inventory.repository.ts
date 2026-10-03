@@ -5,6 +5,7 @@ import type {
   ReservationItemInput,
   ReservationResult,
 } from '../../app/inventory.service';
+import { InventoryConflictError } from '../../app/inventory.service';
 
 type LockedProduct = { id: string; stock: number };
 
@@ -27,10 +28,10 @@ export class PrismaInventoryRepository implements InventoryRepository {
         locked.push(...rows);
       }
       const ids = items.map((item) => item.productId);
-      if (locked.length !== ids.length) throw new Error('unknown stock');
+      if (locked.length !== ids.length) throw new InventoryConflictError('unknown stock');
       const stockById = new Map(locked.map((product) => [product.id, product.stock]));
       if (items.some((item) => (stockById.get(item.productId) ?? 0) < item.quantity)) {
-        throw new Error('insufficient stock');
+        throw new InventoryConflictError('insufficient stock');
       }
 
       for (const item of items) {
@@ -61,7 +62,7 @@ export class PrismaInventoryRepository implements InventoryRepository {
         (item, index) =>
           item.productId === items[index]?.productId && item.quantity === items[index]?.quantity
       );
-    if (!same) throw new Error('order payload conflict');
+    if (!same) throw new InventoryConflictError('order payload conflict');
     return { status: 'reserved', reservationId: reservation.id };
   }
 
@@ -78,16 +79,16 @@ export class PrismaInventoryRepository implements InventoryRepository {
           JSON.stringify(existing.requestPayload) !==
           requestPayload.slice(requestPayload.indexOf(':') + 1)
         ) {
-          throw new Error('adjustment idempotency conflict');
+          throw new InventoryConflictError('adjustment idempotency conflict');
         }
         return existing.result as unknown as AdjustmentResult;
       }
       const locked = await tx.$queryRaw<LockedProduct[]>`
         SELECT id, stock FROM products WHERE id = ${productId} FOR UPDATE
       `;
-      if (locked.length === 0) throw new Error('unknown stock');
+      if (locked.length === 0) throw new InventoryConflictError('unknown stock');
       const nextStock = locked[0].stock + quantity;
-      if (nextStock < 0) throw new Error('insufficient stock');
+      if (nextStock < 0) throw new InventoryConflictError('insufficient stock');
       await tx.product.update({ where: { id: productId }, data: { stock: nextStock } });
       const adjustment = await tx.stockAdjustment.create({
         data: {

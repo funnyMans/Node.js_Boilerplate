@@ -46,7 +46,7 @@ export class PrismaAuthRepository implements AuthRepositoryPort {
         expiresAt: input.expiresAt,
         refreshExpiresAt: input.refreshExpiresAt,
       },
-    } as any);
+    });
 
     return new Session(
       session.id,
@@ -55,7 +55,7 @@ export class PrismaAuthRepository implements AuthRepositoryPort {
       input.userId,
       input.role,
       session.expiresAt,
-      (session as any).refreshExpiresAt ?? input.refreshExpiresAt
+      session.refreshExpiresAt
     );
   }
 

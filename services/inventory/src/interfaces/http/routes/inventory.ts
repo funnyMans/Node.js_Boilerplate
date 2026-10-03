@@ -1,24 +1,27 @@
 import type { FastifyInstance } from 'fastify';
-import { InventoryService } from '../../../app/inventory.service';
+import {
+  InventoryConflictError,
+  InventoryNotFoundError,
+  InventoryService,
+} from '../../../app/inventory.service';
 
 type ReservationBody = { orderId: string; items: Array<{ productId: string; quantity: number }> };
 type AdjustmentBody = { productId: string; quantity: number };
 
 function sendError(
+  server: FastifyInstance,
   reply: { code: (status: number) => { send: (body: unknown) => unknown } },
   error: unknown
 ) {
-  const message = error instanceof Error ? error.message : 'Inventory request failed';
-  const status =
-    message.includes('unknown stock') ||
-    message.includes('insufficient') ||
-    message.includes('conflict') ||
-    message.includes('positive') ||
-    message.includes('required') ||
-    message.includes('nonzero')
-      ? 409
-      : 500;
-  return reply.code(status).send({ error: message });
+  if (error instanceof InventoryConflictError) {
+    return reply.code(409).send({ error: error.message });
+  }
+  if (error instanceof InventoryNotFoundError) {
+    return reply.code(404).send({ error: error.message });
+  }
+
+  server.log.error({ err: error }, 'inventory request failed');
+  return reply.code(500).send({ error: 'Inventory request failed' });
 }
 
 export function registerInventoryRoutes(server: FastifyInstance, service: InventoryService) {
@@ -53,7 +56,7 @@ export function registerInventoryRoutes(server: FastifyInstance, service: Invent
       try {
         return await service.reserve(request.body.orderId, request.body.items);
       } catch (error) {
-        return sendError(reply, error);
+        return sendError(server, reply, error);
       }
     }
   );
@@ -88,7 +91,7 @@ export function registerInventoryRoutes(server: FastifyInstance, service: Invent
       try {
         return await service.adjust(key, request.body.productId, request.body.quantity);
       } catch (error) {
-        return sendError(reply, error);
+        return sendError(server, reply, error);
       }
     }
   );

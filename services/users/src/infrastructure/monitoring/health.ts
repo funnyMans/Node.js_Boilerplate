@@ -1,5 +1,4 @@
 import { checkDependencyHealth } from '@app/common';
-import type { PrismaClient } from '../../../generated/prisma/client';
 
 export type DatabaseHealthStatus = 'ok' | 'degraded' | 'down' | 'unknown';
 export type RedisHealthStatus = 'ok' | 'degraded' | 'down' | 'unknown';
@@ -8,8 +7,12 @@ type RedisLike = {
   ping: () => Promise<string> | string;
 };
 
+type DatabaseHealthClient = {
+  $queryRaw: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+};
+
 export async function checkDatabaseHealth(
-  prisma: Pick<PrismaClient, '$queryRaw'>
+  prisma: DatabaseHealthClient
 ): Promise<DatabaseHealthStatus> {
   return checkDependencyHealth(() => prisma.$queryRaw`SELECT 1`);
 }

@@ -5,7 +5,12 @@ export interface InfrastructureLogger {
 }
 
 export function createRedisClient(url: string | undefined, logger: InfrastructureLogger) {
-  const redis = new IORedis(url ?? process.env.REDIS_URL ?? 'redis://127.0.0.1:6379');
+  const redis = new IORedis(url ?? process.env.REDIS_URL ?? 'redis://127.0.0.1:6379', {
+    connectTimeout: 5000,
+    commandTimeout: 2000,
+    maxRetriesPerRequest: 1,
+    retryStrategy: (attempt) => Math.min(attempt * 100, 2000),
+  });
   redis.on('error', (err) => logger.error({ err }, 'Redis error'));
   return redis;
 }

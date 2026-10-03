@@ -29,6 +29,8 @@ export function createServer() {
   }
   const s3Client = new S3Client({
     region: config.AWS_REGION,
+    retryMode: 'standard',
+    maxAttempts: config.S3_MAX_ATTEMPTS,
     ...(config.S3_ENDPOINT_URL ? { endpoint: config.S3_ENDPOINT_URL, forcePathStyle: true } : {}),
     ...(config.AWS_ACCESS_KEY_ID && config.AWS_SECRET_ACCESS_KEY
       ? {
@@ -43,7 +45,9 @@ export function createServer() {
     prisma,
     server.log,
     s3Client,
-    config.RAW_EVENTS_BUCKET
+    config.RAW_EVENTS_BUCKET,
+    1000,
+    config.S3_REQUEST_TIMEOUT_MS
   );
   const temporalOptions = {
     address: config.TEMPORAL_ADDRESS,

@@ -1,6 +1,9 @@
 # Monorepo & Service Structure
 
-This repository follows a DDD-first service layout and keeps generated artifacts out of `src/`.
+This repository uses a DDD-inspired layered layout and keeps generated
+artifacts out of `src/`. Service boundaries are shared, but the depth of
+domain/application layering should match each service's actual complexity;
+not every small service needs every possible folder.
 
 ## Root conventions
 

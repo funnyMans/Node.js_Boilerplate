@@ -69,6 +69,38 @@ describe('api gateway user routes', () => {
     await server.close();
   });
 
+  it.each([
+    { method: 'GET' as const, payload: undefined },
+    { method: 'PATCH' as const, payload: { firstName: 'Nora' } },
+  ])('encodes user IDs before forwarding $method requests', async ({ method, payload }) => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'user/extra' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const adminSession = { ...session, role: 'admin' as const };
+    const server = createTestServer({ validateSession: async () => adminSession });
+    server.addHook('onRequest', async (request) => {
+      request.headers.authorization = 'Bearer test-token';
+    });
+
+    const response = await server.inject({
+      method,
+      url: '/users/user%2Fextra',
+      headers: { authorization: 'Bearer test-token' },
+      payload,
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://users.internal:3001/users/user%2Fextra',
+      expect.any(Object)
+    );
+    await server.close();
+  });
+
   it.each(['blocked', 'active'] as const)(
     'allows an admin to change user status to %s',
     async (status) => {

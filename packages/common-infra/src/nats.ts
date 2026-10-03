@@ -1,6 +1,25 @@
-import { connect, headers, NatsConnection, StringCodec, JSONCodec } from 'nats';
+import {
+  connect,
+  headers,
+  NatsConnection,
+  StringCodec,
+  JSONCodec,
+  type JetStreamClient,
+  type PubAck,
+} from 'nats';
+import type { Msg, Subscription } from 'nats';
 import type { EventEnvelope } from '@app/contracts';
 import type { InfrastructureLogger } from './redis';
+
+export type NatsPublisher = Pick<JetStreamClient, 'publish'>;
+
+export type NatsMessage = Pick<Msg, 'data'>;
+
+export type NatsSubscription = AsyncIterable<NatsMessage> & Pick<Subscription, 'unsubscribe'>;
+
+export type NatsSubscriber = {
+  subscribe: (subject: string) => NatsSubscription;
+};
 
 export async function createNatsClient(
   url: string | undefined,
@@ -25,11 +44,12 @@ export const sc = StringCodec();
 export const jc = JSONCodec();
 
 export async function publishEvent<TPayload>(
-  nc: Pick<NatsConnection, 'publish'>,
+  nc: NatsPublisher,
   subject: string,
   event: EventEnvelope<TPayload>,
+  messageId: string,
   traceContext?: Record<string, string>
-): Promise<void> {
+): Promise<PubAck> {
   const payload = jc.encode(event);
   const messageHeaders = headers();
   let hasTraceHeaders = false;
@@ -39,27 +59,28 @@ export async function publishEvent<TPayload>(
       hasTraceHeaders = true;
     }
   }
-  nc.publish(subject, payload, hasTraceHeaders ? { headers: messageHeaders } : undefined);
+  return nc.publish(subject, payload, {
+    msgID: messageId,
+    ...(hasTraceHeaders ? { headers: messageHeaders } : {}),
+  });
 }
 
 export function subscribeTo<TPayload>(
-  nc: Pick<NatsConnection, 'subscribe'>,
+  nc: NatsSubscriber,
   subject: string,
   handler: (event: EventEnvelope<TPayload>) => Promise<void> | void,
   logger: InfrastructureLogger
 ) {
   const sub = nc.subscribe(subject);
+  const eventCodec = JSONCodec<EventEnvelope<TPayload>>();
 
   (async () => {
-    for await (const msg of sub as any) {
-      const event = jc.decode((msg as any).data) as EventEnvelope<TPayload>;
+    for await (const msg of sub) {
+      const event = eventCodec.decode(msg.data);
       await handler(event);
-
-      if (typeof (msg as any).ack === 'function') {
-        await (msg as any).ack();
-      }
     }
   })().catch((error: unknown) => {
+    sub.unsubscribe();
     logger.error(
       { err: error instanceof Error ? error : new Error(String(error)), subject },
       'NATS subscription failed'

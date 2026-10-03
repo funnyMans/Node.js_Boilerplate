@@ -6,18 +6,194 @@ services just to make the stack larger. Each phase should leave behind a
 readable explanation, repeatable evidence, and a clear statement of what has
 and has not been verified.
 
-## Current focus — learn and configure what exists
+## Current focus — improve the application we already have
 
-Pause new services and business functionality while working through the
-existing architecture: follow the main order journey, study the responsibility
-of each service and tool, and learn how logs, traces, metrics, tests, and
-health signals explain its behavior. Improve the diagrams and guides wherever
-they leave a learner to infer an important boundary.
+Keep new business features, services, and deployment out of scope while we
+learn from the existing application. Work through the application-quality
+roadmap below: prefer small changes that improve type safety, clarify
+boundaries, strengthen tests, or make everyday development more predictable.
+Continue using the order journey and local observability as the system-level
+regression check when a change affects them.
 
-The next operational exercise is Phase 5 below, but first understand the
-relevant service, expected signal, and recovery action. Kubernetes,
-GraphQL/Apollo Federation, RabbitMQ, AI agents, and deployment are possible
-future learning topics—not current requirements or commitments.
+The operational failure drills in Phase 5 remain useful follow-up work, but
+they do not block this application-quality track. Kubernetes, GraphQL/Apollo
+Federation, RabbitMQ, AI agents, and deployment remain possible future
+learning topics—not current requirements or commitments.
+
+## Application code and developer-experience roadmap
+
+This track complements the system-operation phases above; it does not propose
+a rewrite or a more elaborate architecture for its own sake. The repo already
+has strict TypeScript, shared runtime/bootstrap helpers, Zod validation at
+several HTTP boundaries, unit and integration tests, a full local order
+journey, and architecture documentation. The goal is to understand and improve
+the seams that remain inconsistent.
+
+### Current assessment
+
+- **Not a production product by design:** payments and inventory use local
+  implementations, Moto is in-memory, and the normal development stack is not
+  a deployment target. These are deliberate learning boundaries, not missing
+  launch blockers.
+- **NATS delivery now has a broker-acknowledged publisher path:** the orders
+  outbox publishes to a file-backed JetStream stream and waits for a publish
+  acknowledgement; event IDs deduplicate retries within a bounded window.
+  There is still no application NATS consumer, so no consumer-processing
+  acknowledgement or end-to-end event side effect is claimed.
+- **The explicit-`any` lint rule is now enforced:** initial cleanup replaced
+  broad types and casts in shared infrastructure, Prisma mapping, and test
+  doubles with narrower contracts. Further type-safety work should focus on
+  boundary validation and unsafe assertions rather than merely satisfying a
+  lint rule.
+- **Service layering is uneven:** `users` and `auth-service` have explicit
+  domain, application, adapter, and HTTP boundaries, while `inventory` and
+  `payments` use thinner application and infrastructure structures. That can
+  be appropriate for simpler domains, but the conventions and trade-offs
+  should be explicit rather than accidental.
+- **Contracts are mostly compile-time types:** `packages/contracts` exports
+  TypeScript types, while services define runtime Zod schemas at their
+  boundaries. This means type sharing alone does not validate data crossing
+  HTTP or event boundaries.
+- **Package-level commands are inconsistent:** several workspaces have no
+  `test` script even though root Vitest commands find their tests, and the
+  users start output path differs from the other HTTP services. Root-level
+  commands work today; improve per-package ergonomics without breaking them.
+- **Documentation must distinguish configured behavior from dated evidence:**
+  the live stack is intentionally not recreated for every configuration
+  change, so current Compose files and historical runtime checks can differ.
+  Keep those states explicit instead of presenting an old run as current
+  verification.
+
+### Track 1 — reconcile the engineering baseline
+
+**Goal:** make the actual code and the learning materials agree before
+refactoring. Resolve stale statements, list the current conventions and their
+exceptions, and capture the clean-worktree commands used for build, lint,
+unit/integration tests, and the opt-in order journey.
+
+**Done when:** the walkthrough, operations guide, roadmap, and scripts give a
+consistent account of current behavior; intentional differences between
+services are called out; no implementation claim is presented as verified
+without evidence.
+
+### Track 2 — make shared infrastructure type-safe
+
+**Goal:** remove avoidable `any` and unsafe casts from shared helpers and
+adapters, starting with the narrowest reusable APIs. Inspect actual callers
+first: type NATS subscriptions against the installed NATS API, decide whether
+the BullMQ helper is part of the supported local design, replace broad
+Temporal health inputs with a clear contract, and use generated Prisma types
+where possible.
+
+**Progress:** ESLint now rejects explicit `any` across the workspace. The
+first cleanup typed NATS subscriptions, health probes, BullMQ factories, and
+Prisma session persistence. BullMQ factories now pass URL-based connection
+options accepted by BullMQ, and workers default
+`maxRetriesPerRequest` to `null`; focused factory tests cover those options.
+Health caches are isolated by dependency client or Temporal address, Temporal
+client health checks call `ensureConnected()`, and NATS health uses explicit
+closed/draining state. Core NATS subscriptions no longer imply JetStream
+acknowledgement; failed handlers unsubscribe and log the failure.
+
+**Done when:** shared public APIs express their supported inputs and outcomes
+in types; unit tests cover success, unavailable dependencies, and cleanup
+behavior; no runtime behavior was silently changed to satisfy the compiler.
+
+### Track 3 — make boundary contracts explicit
+
+**Goal:** follow one HTTP request and one event across service boundaries.
+Choose where runtime schemas live, avoid duplicating definitions without a
+reason, and make versioning and validation behavior clear for events as well
+as HTTP. Keep HTTP DTOs, domain models, and persistence records distinct where
+their responsibilities differ.
+
+**Progress:** the shared event registry now ties each supported event name to
+its payload type, and the event factory preserves that literal event name.
+This catches event/payload mismatches at compile time. The package README now
+states clearly that TypeScript types do not validate untrusted runtime data;
+receiver-side parsing remains follow-up work.
+
+The first API-gateway boundary hardening validates successful auth-service
+session responses at runtime (including the role and expiration timestamp)
+instead of trusting a TypeScript cast. Session validation requests now have a
+five-second timeout; malformed responses and transport failures continue to
+surface to the gateway guard as auth-service unavailability. User IDs in
+gateway profile routes are also encoded as single path segments before being
+forwarded downstream. The auth-service users client likewise validates
+successful user-creation and lifecycle responses against their expected
+shapes, reuses the shared user-status registry, and applies a five-second
+timeout to both users-service calls. In the `users` service, profile updates
+now map only the explicit user-not-found application error to HTTP 404;
+unexpected repository failures propagate to Fastify's error handling instead
+of being misreported as missing users.
+The `inventory` HTTP boundary now maps explicit inventory conflict/not-found
+errors and logs unexpected failures while returning a generic 500 response,
+instead of classifying errors by message substrings or exposing arbitrary
+repository error messages to callers.
+The `orders` Temporal activities now classify malformed JSON from a successful
+downstream response as a non-retryable contract failure, while preserving
+retryability for response-body transport/read errors and transient HTTP
+statuses.
+The `payments` HTTP boundary now logs unexpected adapter/provider failures and
+returns a generic internal error instead of exposing raw exception messages;
+known `PaymentServiceError` responses retain their explicit status and code.
+The opt-in orders journey now parses login sessions, order responses, outbox
+snapshots, and NATS events against runtime schemas, using shared role, order
+status, and event-name registries where available. This makes the integrated
+journey fail directly on contract drift rather than trusting test-only casts.
+
+### Shared application utilities — progress
+
+`packages/common/src/env.ts` now validates the complete Zod configuration
+object in one pass. Startup diagnostics report all invalid keys together,
+schema defaults continue to apply, and values are not echoed in error output.
+
+### Local infrastructure — progress
+
+All 13 published ports in the documented development Compose stack now bind
+to `127.0.0.1`, including the E2E overlay. The services remain reachable from
+each other over the Compose network; the host mappings are for local developer
+tools and browser access. The legacy `infra/docker-compose.yml` is documented
+as incomplete and is not part of the supported application stack.
+
+**Done when:** malformed external data is rejected at the receiving boundary;
+cross-service request/event shapes have focused tests; event compatibility
+rules are documented; errors remain actionable without leaking credentials
+or sensitive payloads.
+
+### Track 4 — standardize architecture deliberately
+
+**Goal:** decide which patterns are worth keeping in each service. Use the
+more explicit `users` or `auth-service` structure as a teaching example, not
+as a mandate to copy every folder into every small service. Clarify when a
+service needs a domain model, use case, repository port, or mapper, and keep
+simple orchestration simple.
+
+**Done when:** each service has an understandable request-to-persistence
+flow; application logic can be tested without a live database where useful;
+folders represent meaningful boundaries rather than empty ceremony; targeted
+refactors preserve the external contract and pass regression tests.
+
+### Track 5 — improve package-level DX and test confidence
+
+**Goal:** make the same basic workflows discoverable and predictable across
+workspaces. Align package scripts and build/start entrypoints, document which
+tests need infrastructure, and measure test gaps by behavior (not by chasing
+an arbitrary coverage percentage). Keep root commands as the supported
+workspace interface.
+
+**Done when:** a contributor can find and run a service's build, lint, and
+relevant tests consistently; the clean build does not depend on stale
+generated output; changed behavior has focused tests plus the appropriate
+integration check. Decide separately whether and when to resume automatic CI
+for `dev`; its pause is an explicit workflow setting, not a code-quality fix.
+
+### Track 6 — practice failure and recovery on the proven design
+
+After the preceding changes, resume the existing Phase 5 drills: induce one
+bounded local dependency or delivery failure at a time, observe retries and
+signals, restore the dependency, and verify recovery. Do not add infrastructure
+or production integrations merely to create a more complicated exercise.
 
 ## Phase 1 — Make the current setup the source of truth
 
@@ -34,21 +210,21 @@ components separately from optional future choices.
 **Verified:** on 2026-09-29 the gateway and its declared dependency set were
 started with `docker compose ... up -d --no-build --wait api-gateway`. Compose
 reported the gateway and its health-checked dependencies healthy; the S3 init
-job exited successfully. The full development stack (Dagster, Nginx,
-Prometheus, Grafana, and OTel collector) was not started in this check.
+job exited successfully. That specific check did not start the full
+development stack (Dagster, Nginx, Prometheus, Grafana, or OTel collector).
+Later dated checks exercised the full E2E stack; the current Compose health
+coverage is listed in [`infra/README.md`](../infra/README.md).
 
-**Done when:** documentation matches the checked Compose services and files,
-monitoring targets are explicit, and a no-build start has been checked against
-the readiness expectations without rebuilding all images together. The
-documented core order-service dependency set has passed that live no-build
-readiness check; the optional full-stack monitoring/ETL processes have not
-been started as part of this verification.
-
-**Remaining gaps:** `temporal`, `nginx`, Prometheus, Grafana, and the OTel
-collector have no Compose health checks. The Moto S3 mock has a TCP readiness
-check, and the bucket init job now waits for that check. This only proves the
-listener accepts connections, not that S3 operations or seeded objects are
-correct.
+**Current status:** the local Compose configuration, operations guide,
+architecture maps, and tool boundaries have been reconciled for the current
+known workflows. The main full stack and order journey have historical live
+verification; recent configuration changes were validated without recreating
+active containers and must not be described as active runtime behavior yet.
+Compose now defines health checks for Temporal, Nginx, Prometheus, Grafana,
+and the OTel collector. Tempo remains without a native Compose health check.
+The Moto S3 probe uses `ListBuckets`, which proves API response only; bucket
+and seed presence belong to the separate init job. Clean-worktree validation
+commands and evidence remain part of the broader engineering-baseline track.
 
 ## Phase 2 — Prove a critical journey end to end
 
@@ -143,6 +319,13 @@ alert rules, and running retention default (`0`) were verified; retention
 remains disabled. Production-mode secret rejection is implemented but was not
 runtime-tested in this Compose verification, so this phase's secret/config
 guardrail verification is still partial.
+
+Postgres, Redis, NATS, and Temporal also have explicit restart policies and
+graceful stop periods. These recover a process after an unexpected exit; they
+do not re-run Compose dependency ordering or restore application readiness.
+Moto deliberately has no automatic restart policy because its in-memory
+objects would disappear on restart; reseeding remains a separate operator
+action.
 
 **Verified 2026-09-30:** a bounded drill used one existing completed order.
 The expired-lock paths marked its workflow-start and raw-export stages

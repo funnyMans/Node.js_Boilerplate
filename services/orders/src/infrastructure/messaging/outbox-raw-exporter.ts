@@ -29,7 +29,8 @@ export class OutboxRawExporter {
     private readonly logger: FastifyBaseLogger,
     private readonly s3: S3Client,
     private readonly bucket: string,
-    private readonly pollIntervalMs = 1000
+    private readonly pollIntervalMs = 1000,
+    private readonly requestTimeoutMs = 10_000
   ) {}
 
   start(): void {
@@ -119,7 +120,8 @@ export class OutboxRawExporter {
                 Key: rawObject.key,
                 Body: rawObject.body,
                 ContentType: 'application/x-ndjson',
-              })
+              }),
+              { abortSignal: AbortSignal.timeout(this.requestTimeoutMs) }
             );
             await this.prisma.$executeRaw`
               UPDATE outbox_events

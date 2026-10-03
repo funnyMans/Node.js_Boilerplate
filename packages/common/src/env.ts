@@ -2,9 +2,7 @@ import { z } from 'zod';
 
 export type EnvSchema = Record<string, z.ZodTypeAny>;
 
-export type ConfigFromSchema<TSchema extends EnvSchema> = {
-  [K in keyof TSchema]: z.infer<TSchema[K]>;
-};
+export type ConfigFromSchema<TSchema extends EnvSchema> = z.infer<z.ZodObject<TSchema>>;
 
 export function getRequiredEnv(name: string): string {
   const value = process.env[name];
@@ -36,20 +34,15 @@ export function createConfig<TSchema extends EnvSchema>(
   schema: TSchema,
   source: Record<string, string | undefined> = process.env
 ): ConfigFromSchema<TSchema> {
-  const output = {} as ConfigFromSchema<TSchema>;
+  const parsed = z.object(schema).safeParse(source);
 
-  for (const [key, valueSchema] of Object.entries(schema)) {
-    const rawValue = source[key];
-    const parsed = valueSchema.safeParse(rawValue);
-
-    if (!parsed.success) {
-      const issueText = parsed.error.issues.map((issue) => issue.message).join('; ');
-
-      throw new Error(`Invalid environment variable "${key}": ${issueText}`);
-    }
-
-    output[key as keyof TSchema] = parsed.data as ConfigFromSchema<TSchema>[keyof TSchema];
+  if (!parsed.success) {
+    const issueMessages = parsed.error.issues.map((issue) => {
+      const key = issue.path[0];
+      return `Invalid environment variable "${String(key)}": ${issue.message}`;
+    });
+    throw new Error(issueMessages.join('\n'));
   }
 
-  return output;
+  return parsed.data;
 }

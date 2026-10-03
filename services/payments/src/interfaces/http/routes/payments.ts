@@ -21,7 +21,12 @@ const createRefundSchema = z.object({
   paymentId: z.string().min(1),
 });
 
-function getErrorResponse(error: unknown, fallbackMessage: string) {
+function getErrorResponse(
+  server: FastifyInstance,
+  error: unknown,
+  context: string,
+  fallbackMessage: string
+) {
   if (error instanceof PaymentServiceError) {
     return {
       statusCode: error.statusCode,
@@ -29,12 +34,10 @@ function getErrorResponse(error: unknown, fallbackMessage: string) {
     };
   }
 
+  server.log.error({ err: error }, context);
   return {
     statusCode: 500,
-    body: {
-      error: error instanceof Error ? error.message : fallbackMessage,
-      code: 'internal_error',
-    },
+    body: { error: fallbackMessage, code: 'internal_error' },
   };
 }
 
@@ -48,8 +51,13 @@ export function registerPaymentRoutes(server: FastifyInstance, service: PaymentS
     try {
       return await service.createSetupIntent(userId);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'failed to create setup intent';
-      return reply.code(500).send({ error: message });
+      const result = getErrorResponse(
+        server,
+        error,
+        'payment setup-intent request failed',
+        'Payment request failed'
+      );
+      return reply.code(result.statusCode).send(result.body);
     }
   });
 
@@ -67,7 +75,12 @@ export function registerPaymentRoutes(server: FastifyInstance, service: PaymentS
     try {
       return await service.selectDefaultPaymentMethod(userId, parsed.data.setupIntentId);
     } catch (error) {
-      const result = getErrorResponse(error, 'Failed to set default payment method');
+      const result = getErrorResponse(
+        server,
+        error,
+        'payment default-method request failed',
+        'Payment request failed'
+      );
       return reply.code(result.statusCode).send(result.body);
     }
   });
@@ -90,7 +103,12 @@ export function registerPaymentRoutes(server: FastifyInstance, service: PaymentS
       }
       return reply.send(result);
     } catch (error) {
-      const result = getErrorResponse(error, 'Failed to charge');
+      const result = getErrorResponse(
+        server,
+        error,
+        'payment charge request failed',
+        'Payment request failed'
+      );
       return reply.code(result.statusCode).send(result.body);
     }
   });
@@ -109,7 +127,12 @@ export function registerPaymentRoutes(server: FastifyInstance, service: PaymentS
     try {
       return await service.refund(parsed.data);
     } catch (error) {
-      const result = getErrorResponse(error, 'Failed to refund');
+      const result = getErrorResponse(
+        server,
+        error,
+        'payment refund request failed',
+        'Payment request failed'
+      );
       return reply.code(result.statusCode).send(result.body);
     }
   });

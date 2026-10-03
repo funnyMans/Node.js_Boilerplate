@@ -33,21 +33,6 @@ export function createServer(): {
     observabilityEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
   });
 
-  server.addHook('onRequest', async (request) => {
-    try {
-      (server.log as any).info(
-        {
-          rawUrl: (request.raw && (request.raw as any).url) || request.url,
-          xOriginalUri: request.headers['x-original-uri'],
-          xOriginalPath: request.headers['x-original-path'],
-        },
-        'incoming raw request'
-      );
-    } catch {
-      // ignore debug logging failures
-    }
-  });
-
   registerServiceMetrics(server, 'users-service');
 
   registerHealthRoutes(server, { prisma, redis });

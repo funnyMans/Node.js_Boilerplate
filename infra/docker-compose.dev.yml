@@ -1,13 +1,17 @@
 services:
   postgres:
-    image: postgres:15
+    restart: unless-stopped
+    stop_grace_period: 60s
+    image: postgres:15.19-bookworm@sha256:539ceaaae49b3a7c8a04467cf00cc6788d8e3f1675df41860d86eebc4c40524f
+    shm_size: 256mb
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-dev}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev}
       POSTGRES_DB: app
-      POSTGRES_MULTIPLE_DATABASES: app,auth,orders,payments,inventory
+      POSTGRES_MULTIPLE_DATABASES: auth,orders,payments,inventory
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
@@ -15,12 +19,27 @@ services:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-dev} -d app']
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
 
   redis:
-    image: redis:7
+    restart: unless-stopped
+    stop_grace_period: 30s
+    image: redis:7.4.11-alpine
+    command:
+      [
+        'redis-server',
+        '--maxmemory',
+        '256mb',
+        '--maxmemory-policy',
+        'noeviction',
+        '--save',
+        '',
+        '--appendonly',
+        'no',
+      ]
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
@@ -28,9 +47,15 @@ services:
       retries: 5
 
   nats:
-    image: nats:2.9-alpine
+    restart: unless-stopped
+    stop_grace_period: 30s
+    image: nats:2.15.0-alpine
+    command: ['-c', '/etc/nats/nats.conf']
     ports:
-      - '4222:4222'
+      - '127.0.0.1:4222:4222'
+    volumes:
+      - ./nats/nats.conf:/etc/nats/nats.conf:ro
+      - natsdata:/data
     healthcheck:
       test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:8222/healthz || exit 1']
       interval: 10s
@@ -43,19 +68,25 @@ services:
       context: ..
       dockerfile: services/etl/Dockerfile
     entrypoint: ['moto_server', '-H', '0.0.0.0', '-p', '9000']
+    environment:
+      S3_ENDPOINT_URL: http://127.0.0.1:9000
+      AWS_ACCESS_KEY_ID: ${LOCAL_S3_ACCESS_KEY_ID:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${LOCAL_S3_SECRET_ACCESS_KEY:-minioadmin}
+      AWS_REGION: us-east-1
     ports:
-      - '9000:9000'
+      - '127.0.0.1:9000:9000'
     healthcheck:
       test:
         [
           'CMD',
           'python',
           '-c',
-          "import socket; socket.create_connection(('127.0.0.1', 9000), timeout=2).close()",
+          "import os; from etl_project.s3_client import create_s3_client; create_s3_client(os.environ['S3_ENDPOINT_URL'], os.environ['AWS_REGION'], os.environ['AWS_ACCESS_KEY_ID'], os.environ['AWS_SECRET_ACCESS_KEY']).list_buckets()",
         ]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   s3-mock-init:
     image: nodejs-boilerplate-etl:dev
@@ -72,21 +103,32 @@ services:
       AWS_SECRET_ACCESS_KEY: ${LOCAL_S3_SECRET_ACCESS_KEY:-minioadmin}
       AWS_REGION: us-east-1
 
-  # Temporal (enabled) — auto-setup image bootstraps Temporal using Postgres.
+  # Local single-server Temporal with durable history in the shared Postgres volume.
   temporal:
-    image: temporalio/auto-setup:1.20.1
+    restart: unless-stopped
+    stop_grace_period: 60s
+    image: temporalio/auto-setup:1.29.7@sha256:f14912b699cf73015ad5c4fc18d522d4b014db90e794039214dfb7c022c2644f
     ports:
-      - '7233:7233'
+      - '127.0.0.1:7233:7233'
     environment:
-      - DB=postgres
+      - DB=postgres12
       - DB_HOST=postgres
       - DB_PORT=5432
+      - DBNAME=temporal
+      - VISIBILITY_DBNAME=temporal_visibility
+      - DEFAULT_NAMESPACE_RETENTION=24h
       - POSTGRES_USER=${POSTGRES_USER:-dev}
       - POSTGRES_PWD=${POSTGRES_PASSWORD:-dev}
       - POSTGRES_SEEDS=postgres
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'temporal operator cluster health --address temporal:7233']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
 
   payments:
     restart: unless-stopped
@@ -155,6 +197,8 @@ services:
       retries: 5
 
   otel-collector:
+    restart: unless-stopped
+    stop_grace_period: 30s
     image: otel/opentelemetry-collector-contrib:0.78.0
     command: ['--config=/etc/otel-config.yaml']
     volumes:
@@ -163,10 +207,18 @@ services:
       tempo:
         condition: service_started
     ports:
-      - '4317:4317'
-      - '4318:4318'
+      - '127.0.0.1:4317:4317'
+      - '127.0.0.1:4318:4318'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:13133/']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
 
   tempo:
+    restart: unless-stopped
+    stop_grace_period: 30s
     image: grafana/tempo:2.6.1
     command: ['-config.file=/etc/tempo.yaml']
     volumes:
@@ -174,17 +226,30 @@ services:
       - tempo-data:/var/tempo
 
   prometheus:
+    restart: unless-stopped
+    stop_grace_period: 30s
     image: prom/prometheus:v2.54.1
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=2GB
       - --web.enable-lifecycle
     volumes:
       - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
     ports:
-      - '9090:9090'
+      - '127.0.0.1:9090:9090'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:9090/-/healthy']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   grafana:
+    restart: unless-stopped
+    stop_grace_period: 30s
     image: grafana/grafana:11.1.0
     depends_on:
       tempo:
@@ -195,11 +260,17 @@ services:
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
       - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/nodejs-boilerplate-overview.json
     ports:
-      - '3005:3000'
+      - '127.0.0.1:3005:3000'
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:3000/api/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   api-gateway:
     restart: unless-stopped
@@ -221,7 +292,7 @@ services:
       nats:
         condition: service_healthy
       temporal:
-        condition: service_started
+        condition: service_healthy
       s3-mock-init:
         condition: service_completed_successfully
     environment:
@@ -238,7 +309,7 @@ services:
       - TEMPORAL_ADDRESS=temporal:7233
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     healthcheck:
       test:
         [
@@ -309,7 +380,7 @@ services:
       - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET:-local-development-auth-token-secret-change-me-32}
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
     ports:
-      - '3002:3002'
+      - '127.0.0.1:3002:3002'
     healthcheck:
       test:
         [
@@ -338,7 +409,7 @@ services:
       nats:
         condition: service_healthy
       temporal:
-        condition: service_started
+        condition: service_healthy
       payments:
         condition: service_healthy
       inventory:
@@ -360,6 +431,8 @@ services:
       - AWS_ACCESS_KEY_ID=${LOCAL_S3_ACCESS_KEY_ID:-minioadmin}
       - AWS_SECRET_ACCESS_KEY=${LOCAL_S3_SECRET_ACCESS_KEY:-minioadmin}
       - RAW_EVENTS_BUCKET=raw
+      - S3_MAX_ATTEMPTS=3
+      - S3_REQUEST_TIMEOUT_MS=10000
       - OUTBOX_RETENTION_DAYS=${OUTBOX_RETENTION_DAYS:-0}
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
     healthcheck:
@@ -373,6 +446,8 @@ services:
       retries: 5
 
   dagster:
+    restart: unless-stopped
+    stop_grace_period: 30s
     image: nodejs-boilerplate-etl:dev
     build:
       context: ..
@@ -387,7 +462,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${LOCAL_S3_SECRET_ACCESS_KEY:-minioadmin}
       AWS_REGION: us-east-1
     ports:
-      - '3004:3000'
+      - '127.0.0.1:3004:3000'
     volumes:
       - dagster-home:/opt/dagster/dagster_home
     healthcheck:
@@ -396,25 +471,36 @@ services:
           'CMD',
           'python',
           '-c',
-          "import socket; socket.create_connection(('127.0.0.1', 3000), timeout=2).close()",
+          "import json, urllib.request; info=json.load(urllib.request.urlopen('http://127.0.0.1:3000/server_info', timeout=3)); assert info.get('dagster_webserver_version')",
         ]
-      interval: 10s
+      interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   nginx:
+    restart: unless-stopped
+    stop_grace_period: 30s
     image: nginx:1.25-alpine
     ports:
-      - '8080:80'
+      - '127.0.0.1:8080:80'
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
     depends_on:
       api-gateway:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:80/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
+  natsdata:
   pgdata:
+  prometheus-data:
   grafana-data:
   dagster-home:
   tempo-data:

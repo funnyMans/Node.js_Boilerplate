@@ -7,6 +7,9 @@
     { "path": "./packages/contracts" },
     { "path": "./services/api-gateway" },
     { "path": "./services/auth-service" },
+    { "path": "./services/inventory" },
+    { "path": "./services/orders" },
+    { "path": "./services/payments" },
     { "path": "./services/users" }
   ]
 }

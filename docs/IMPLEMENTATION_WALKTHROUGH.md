@@ -12,7 +12,10 @@ It describes the code in this repository, not a claim that every planned externa
 The system now has two connected paths that begin with an authenticated order:
 
 1. A synchronous API path saves the order and its event together.
-2. Independent background workers publish that event to NATS, start a Temporal fulfillment workflow, and export the event to S3-compatible raw storage. Dagster can then turn raw events into daily Parquet data.
+2. Independent background workers publish the event to JetStream and export it
+   to S3-compatible raw storage. A separate dispatcher starts the Temporal
+   workflow only after JetStream publication is acknowledged and recorded.
+   Dagster can then turn raw events into daily Parquet data.
 
 The key safety idea is that creating an order only waits for the order database transaction. It does **not** wait for NATS, object storage, Temporal, payment, or inventory.
 
@@ -37,7 +40,7 @@ flowchart LR
     auth[Auth Service]
     orders[Orders Service]
     db[(PostgreSQL<br/>orders database)]
-    nats[(NATS)]
+    nats[(NATS JetStream)]
     temporal[(Temporal)]
     worker[Temporal worker<br/>in orders service]
     payment[Payments service<br/>local HTTP adapter]
@@ -49,6 +52,8 @@ flowchart LR
     client -->|HTTP| nginx
     nginx --> gateway
     gateway -->|validate bearer/session| auth
+    gateway -->|user and payment-method routes| users
+    gateway -->|payment-method routes| payment
     gateway -->|authenticated user + API request| orders
     orders -->|one transaction: order + outbox event| db
 
@@ -56,7 +61,7 @@ flowchart LR
     natsPub -->|orders.order.created| nats
     db -.->|poll separate raw-export state| exporter[S3 raw exporter]
     exporter -->|JSONL, deterministic object key| s3
-    db -.->|dispatch published event| dispatcher[Temporal dispatcher]
+    db -.->|claim only after NATS is published| dispatcher[Temporal dispatcher]
     dispatcher -->|deterministic workflow ID| temporal
     temporal -->|workflow tasks| worker
     worker -->|charge / refund| payment
@@ -68,7 +73,10 @@ flowchart LR
     curated --> s3
 ```
 
-Dashed arrows from PostgreSQL are independent pollers. The outbox is their durable hand-off point; it is not one serial pipeline where a slow analytics export holds up the API or another delivery path.
+Dashed arrows from PostgreSQL are independent pollers. NATS publication and raw
+export can progress independently; workflow dispatch is gated on successful
+NATS publication. The outbox is their durable hand-off point, so a slow
+analytics export does not hold up the API or the other delivery paths.
 
 ### What each component is responsible for
 
@@ -79,7 +87,7 @@ Dashed arrows from PostgreSQL are independent pollers. The outbox is their durab
 | Auth Service                    | Validates the session/token used by gateway-protected routes.                                                                                           |
 | Orders Service                  | Validates order requests, stores and returns owner-scoped orders, and runs the outbox publisher, S3 exporter, Temporal dispatcher, and Temporal worker. |
 | Orders PostgreSQL database      | Owns order rows, item rows, and the transactional outbox, including independent retry/lock/completion state for each background delivery.               |
-| NATS                            | Receives `orders.order.created` messages from the outbox publisher.                                                                                     |
+| NATS                            | File-backed JetStream accepts `orders.order.created` messages; the publisher waits for a broker acknowledgement. No application consumer is configured. |
 | Temporal                        | Durably coordinates the fulfillment workflow and activity retries.                                                                                      |
 | Payments and inventory services | Local HTTP services called by Temporal activities. They are development implementations, not production provider integrations.                          |
 | S3-compatible storage           | Holds newline-delimited raw events and curated Parquet. Local development uses Moto, an in-memory S3-compatible mock.                                   |
@@ -105,25 +113,31 @@ sequenceDiagram
     Orders->>Orders: Validate items and correlation ID
     Orders->>DB: BEGIN; insert order, items, outbox event
     DB-->>Orders: COMMIT
-    Orders-->>Edge: 201 Created
-    Edge-->>Customer: 201 Created
 
-    par Independent NATS delivery
+    par HTTP response
+        Orders-->>Edge: 201 Created
+        Edge-->>Customer: 201 Created
+    and Independent NATS publication
         Orders->>DB: Claim NATS-pending outbox event
-        Orders->>NATS: Publish orders.order.created
-        Orders->>DB: Mark published after NATS flush
+        Orders->>NATS: Publish to ORDERS JetStream
+        NATS-->>Orders: Publish acknowledgement
+        Orders->>DB: Mark published after JetStream acknowledgement
     and Independent raw-data export
         Orders->>DB: Claim raw-export-pending event
         Orders->>S3: PutObject to raw/orders/created_date=.../events/{outbox-id}.jsonl
         Orders->>DB: Mark raw export complete
     and Workflow dispatch
-        Orders->>DB: Claim NATS-published, workflow-pending event
+        Orders->>DB: Poll until NATS publication is recorded
         Orders->>Temporal: Start order-fulfillment-{orderId}
+        Temporal-->>Orders: Workflow start accepted
         Orders->>DB: Mark workflow started
     end
 ```
 
-The lower half is asynchronous and happens after the HTTP response may already have returned. In particular, the Temporal dispatcher currently waits for NATS publication state (`PUBLISHED`) before it starts a workflow. The raw export is separate and may finish before or after either of those paths.
+The response and background work proceed independently after the order commit.
+The Temporal dispatcher waits for the NATS stage to be recorded as `PUBLISHED`
+after JetStream acknowledges the message, but raw export is not a prerequisite
+and may finish before or after either other stage.
 
 ## Fulfillment: what waits for what
 
@@ -158,7 +172,7 @@ flowchart TD
 ## What the event pipeline does
 
 1. **Commit:** `OrdersService.create` writes the order, items, and `order.created.v1` envelope in one PostgreSQL transaction.
-2. **Publish:** the NATS outbox poller claims rows with a lock, publishes to `orders.order.created`, flushes the NATS connection, and marks success. Failures use exponential backoff; NATS delivery is marked failed after 10 attempts.
+2. **Publish:** the NATS outbox poller claims rows with a lock, publishes to the file-backed JetStream `ORDERS` stream on `orders.order.created`, and waits for the broker publish acknowledgement before marking success. The event ID deduplicates outbox retries within the stream's 24-hour duplicate window. Failures use exponential backoff; NATS delivery is marked failed after 10 attempts.
 3. **Export:** a separate poller claims order-created events that have not been exported. It writes one newline-terminated JSON envelope per object to `raw/orders/created_date={UTC date}/events/{outbox UUID}.jsonl`. A retry uses the same object key. Export failures are logged and retried with backoff (capped at 60 seconds); raw export is not blocked by the NATS status.
 4. **Dispatch:** once NATS delivery is marked published, another poller starts a workflow with the deterministic ID `order-fulfillment-{orderId}`. It retries a failed start, and duplicate-start responses count as already dispatched.
 5. **Curate:** Dagster reads `.jsonl` objects from `raw/orders/`, validates matching order events, selects the chosen UTC day, deduplicates identical event IDs, flattens each item to a row, and writes Zstandard Parquet to `curated/orders/created_date={date}/orders.parquet`.
@@ -170,12 +184,12 @@ The Parquet row grain is **one order item**, not one order. The output columns a
 | Action                  | It waits for                                                                                                              | It does not wait for                                                               |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `POST /orders`          | Gateway authentication, orders-service validation, and the PostgreSQL transaction committing the order plus outbox event. | NATS publication, S3, Temporal, payment, inventory, or Dagster.                    |
-| NATS outbox poller      | PostgreSQL to claim rows and NATS publish/flush to finish.                                                                | S3 or Temporal.                                                                    |
+| NATS outbox poller      | PostgreSQL to claim rows and JetStream to acknowledge persisted stream acceptance.                                        | S3 or Temporal; application consumer processing (no consumer exists yet).          |
 | Raw S3 exporter         | PostgreSQL to claim rows and S3 `PutObject` to finish.                                                                    | NATS, Temporal, or Dagster.                                                        |
 | Temporal dispatcher     | A row to be NATS-published, plus Temporal accepting the workflow start.                                                   | Completion of the workflow activities.                                             |
 | Temporal workflow       | Payment response, then inventory response, then any required refund/cancel or final confirmation.                         | Dagster or raw export.                                                             |
 | Dagster materialization | Reads from raw S3-compatible storage, validation/transformation, and the curated object write.                            | Orders API, NATS, or Temporal. It is started manually in the current sample setup. |
-| Service shutdown        | Stop accepting requests, then run configured resource cleanup in order. Shutdown is bounded at 30 seconds.                | External business services becoming available.                                     |
+| Service shutdown        | Stop accepting requests, then run configured resource cleanup in order. Application shutdown is bounded at 30 seconds.    | External business services becoming available.                                     |
 
 This separation is important: analytics storage trouble should create a visible raw-export backlog, not make a customer wait for an object-store request during checkout.
 
@@ -187,10 +201,18 @@ This separation is important: analytics storage trouble should create a visible 
 - Services register cleanup for the listener, background workers/clients, databases, and observability.
 - `SIGTERM`/`SIGINT` initiate shutdown once; cleanup failures are aggregated and logged, and a timeout/failure leads to a non-zero exit.
 - Compose gives the six HTTP app services a 40-second stop grace period; the
-  shared shutdown timeout is 30 seconds. This is a budget, not proof of
-  graceful worker/client shutdown; a previous Compose stop still needs a
-  lifecycle investigation (see the roadmap).
-- Structured logs and Prometheus metrics are implemented across selected HTTP services. All six HTTP services use the shared OpenTelemetry bootstrap and the local Compose configuration sends their OTLP/HTTP exports to the collector. The collector's current exporter writes traces to collector logs rather than a queryable trace store. For orders specifically, `/health` reports database, NATS, and Temporal status, while `/ready` checks only PostgreSQL; it does not currently report raw-export/S3 health.
+  shared shutdown timeout is 30 seconds. The 2026-09-30 drill observed all six
+  HTTP services exit successfully. It also covered an orders startup race and
+  a stale users entrypoint; shutdown while an activity is actively draining
+  remains unverified.
+- Structured logs and Prometheus metrics are implemented across the HTTP
+  services. All six use the shared OpenTelemetry bootstrap; the local
+  collector uses bounded memory and an in-memory retry queue to export traces
+  to Tempo for Grafana queries. Prometheus scrapes collector and Tempo
+  self-metrics. The order journey verifies trace propagation, but CI does not
+  verify Tempo search or retention. For orders specifically, `/health` reports
+  database, NATS, and Temporal status, while `/ready` checks only PostgreSQL;
+  it does not report raw-export/S3 health.
 
 ### Orders API and persistence
 
@@ -321,8 +343,9 @@ outbox table:
 | `orders_service_outbox_workflow_failed_events`            | Temporal workflow starts that exhausted their retry limit        |
 | `orders_service_outbox_raw_export_failed_events`          | Raw-object exports that exhausted their retry limit              |
 
-Prometheus scrapes all six HTTP services and alerts if any target is
-unavailable, if any delivery stage is terminally failed, or if any
+Prometheus scrapes all six HTTP services plus collector and Tempo internal
+metrics. It alerts if any application target is unavailable, if any delivery
+stage is terminally failed, or if any
 delivery-stage backlog remains older than five minutes for five minutes. The
 overview dashboard includes service status, backlog size, oldest age, and
 terminal-failure panels. These operational metrics complement `/ready` and
@@ -376,8 +399,18 @@ shutdown while a Temporal activity is actively draining, or stress the
 500-row retention batch limit.
 
 - Prometheus reported all six HTTP service targets up; payments/inventory down alerts and the order outbox rules were loaded. Grafana served the dashboard query including all six services. The orders backlog and failed-event gauges were zero after the journey.
-- Nginx, Dagster, Prometheus, Grafana, the OTel collector, and Tempo were included in the full-stack run; all configured health checks passed. Temporal, the collector, and Tempo have no Compose health check. Alert firing under a deliberately induced failure is still unverified; Grafana/Tempo trace search is configured but is not part of the CI order-journey check.
-- A prior Compose stop produced exit code 137 for several app containers with Docker reporting `OOMKilled=false`; the gateway logged an aggregated cleanup failure and exited 1. This is an unresolved shutdown/lifecycle issue, not evidence of an OOM kill. The later E2E run itself remained healthy.
+- In that 2026-09-30 full-stack run, Nginx, Dagster, Prometheus, Grafana,
+  the OTel collector, and Tempo were included. Health checks configured at
+  that time passed. Compose health checks have since been added for Nginx,
+  Prometheus, Grafana, and the collector; Temporal already has a gRPC health
+  check. Tempo still has no Compose health check. Alert firing under a
+  deliberately induced dependency failure is unverified; Grafana/Tempo trace
+  search is not part of the CI order-journey check.
+- An earlier Compose stop produced exit code 137 for several app containers
+  with Docker reporting `OOMKilled=false`; the gateway logged an aggregated
+  cleanup failure and exited 1. The later 2026-09-30 SIGTERM drill observed
+  all six HTTP services exit 0 after fixes. Shutdown during an active Temporal
+  activity and broader sustained-load behavior have not been verified.
 - A real order was submitted to the running orders service. Its event appeared in the raw bucket, and the database recorded raw export completion.
 - Dagster materialized the date partition, and the resulting Parquet contained the new order item alongside the seeded rows.
 
@@ -408,7 +441,7 @@ For the learning path and current setup instructions, use [`README.md`](../READM
 - Keep each background integration independently retryable; never move an S3 or payment call into the request transaction.
 - Preserve deterministic S3 keys, deterministic Temporal workflow IDs, and idempotency keys across retries.
 - Monitor old/locked outbox rows and clear/repair failures deliberately; do not silently mark failed delivery as complete.
-- Decide whether production NATS requires JetStream/durable consumers. The current local publisher uses the NATS publish/flush API; the transactional outbox does not by itself provide durable broker retention after the broker accepts a publish.
+- The local JetStream publisher now waits for broker acknowledgement and uses event-ID deduplication. Add a concrete durable, explicit-ack consumer only when there is a real event side effect to own; consumer effects must remain idempotent because broker delivery is at least once.
 - Keep outbox retention disabled until its eligibility and batch bounds are
   verified. The opt-in outbox sweep does not delete raw objects or Temporal
   history; define separate archival/deletion policy before production scale.
@@ -428,10 +461,9 @@ For the learning path and current setup instructions, use [`README.md`](../READM
 - Keep health/readiness semantics explicit. Orders `/ready` checks PostgreSQL only, while `/health` includes NATS and Temporal but not S3 exporter lag or errors; neither endpoint alone is a complete outbox/S3 delivery signal.
 - Use dashboards and alerts for retry age/count and ETL output freshness; logs alone are not an operational SLO.
 - Keep shutdown bounded and verify that pollers stop cleanly and clients close when adding any new background worker.
-- Compose's `exec node` command forwarding let five HTTP containers stop
-  gracefully. The users container still exits `137` (`OOMKilled=false`) with
-  no shutdown-handler logs, even with its rebuilt image; investigate this
-  before claiming all-service graceful shutdown.
+- A 2026-09-30 SIGTERM drill observed all six HTTP containers exit `0`.
+  Preserve the lifecycle regression tests and repeat the check when adding
+  background workers or changing shutdown behavior.
 - Test object-store restart/reseed, S3 permission errors, prolonged dependency outage, duplicate delivery, and recovery after worker restarts.
 
 ## Vocabulary

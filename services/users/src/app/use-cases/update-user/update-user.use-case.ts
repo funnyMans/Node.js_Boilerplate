@@ -1,5 +1,6 @@
 import type { User } from '../../../domain/models/user.entity';
 import type { UserRepositoryPort } from '../../../domain/repositories/user.repository.interface';
+import { UserNotFoundError } from '../../errors/user-not-found.error';
 import type { UpdateUserInput } from './update-user.dto';
 
 export class UpdateUserUseCase {
@@ -9,7 +10,7 @@ export class UpdateUserUseCase {
     const current = await this.userRepository.getById(id);
 
     if (!current) {
-      throw new Error('User not found');
+      throw new UserNotFoundError();
     }
 
     const next: UpdateUserInput = { ...input };

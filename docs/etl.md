@@ -2,11 +2,11 @@
 
 Role
 
-- Dagster runs scheduled/batch/asset pipelines, transforms raw data to curated assets, and emits lineage.
+- Dagster defines batch/asset pipelines, transforms raw data to curated assets, and emits lineage. The current code location has one manually materialized partitioned asset job; no schedule or sensor automatically launches it.
 
 Dev stack
 
-- Dagster's local development server (UI and daemon) + Moto's in-memory S3-compatible server. Dagster local run metadata is stored in the `dagster-home` volume.
+- Dagster's local development server (UI and daemon) + Moto's in-memory S3-compatible server. Dagster run, event-log, and schedule metadata use local SQLite storage in the `dagster-home` volume.
 
 Project placement
 
@@ -35,9 +35,12 @@ Local development
 
 - Dagster UI: `http://localhost:3004`. Materialize the `curated_orders` asset for partition `2026-09-27` to process the seeded example events.
 - The local S3-compatible endpoint is `http://localhost:9000` (development credentials: `minioadmin` / `minioadmin`). Raw and curated buckets are created automatically. Moto stores objects in memory, so restarting its container resets them and the init service must be rerun.
+- The Moto health check calls the S3 `ListBuckets` API; it does not assert that buckets are seeded. `s3-mock-init` owns bucket creation and sample seeding. Local Moto credentials are placeholders, not an authentication boundary.
+- Orders raw writes use stable event-derived object keys and a bounded 10-second request deadline. The shared ETL boto3 client uses bounded connect/read timeouts, standard retries (up to three attempts), and path-style addressing. These are local client safeguards; they do not make Moto durable or guarantee AWS-equivalent behavior.
 - Creating an order through the API writes its event to the orders outbox; the background exporter then makes it available under `raw/orders/`. Run the matching UTC partition from Dagster to process it.
 
 Observability & testing
 
 - Run transformation tests with `python -m unittest discover -s services/etl/tests` in an environment with `services/etl/requirements.txt` installed.
-- A Docker health check verifies the Dagster webserver is listening. Asset materializations include source object count, output row count, partition date, output URI, and output byte size.
+- A Docker health check verifies the Dagster `/server_info` endpoint returns webserver version metadata. Asset materializations include source object count, output row count, partition date, output URI, and output byte size.
+- The Compose health check calls Dagster's `/server_info` endpoint. A healthy UI/daemon and persisted SQLite run metadata do not make Moto objects durable, and they do not cause the ETL job to run automatically.

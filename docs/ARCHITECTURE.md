@@ -21,18 +21,19 @@ For request, event, and data flows, see [`diagrams.md`](./diagrams.md) and the
 | Repository             | `pnpm` workspaces with Turborepo tasks                                                | Local monorepo tooling; no claim of a configured remote build cache.                                                                                                                                                                                        |
 | Application runtime    | TypeScript and Fastify HTTP services                                                  | Services are separate processes in the development Compose stack.                                                                                                                                                                                           |
 | Persistence            | Prisma with PostgreSQL                                                                | Local Compose uses one PostgreSQL server with separate service databases.                                                                                                                                                                                   |
-| Authentication         | Auth service called by the API gateway                                                | The gateway is the public application entry point; internal service ports are also published selectively in development.                                                                                                                                    |
-| Messaging              | NATS with an orders transactional outbox publisher                                    | The local publisher's publish/flush is not equivalent to durable broker retention or consumer acknowledgements.                                                                                                                                             |
+| Authentication         | Auth service called by the API gateway                                                | The gateway is the intended user-facing entry point; auth is also loopback-published for local development.                                                                                                                                                 |
+| Messaging              | File-backed JetStream stream with an orders transactional outbox publisher            | Publisher waits for broker acknowledgement and deduplicates retries by event ID within the stream window. There is not yet an application consumer or consumer-processing acknowledgement.                                                                  |
 | Workflow               | Temporal workflow and worker in the orders application                                | Local Temporal is provided by Compose; payment/inventory calls use local HTTP services.                                                                                                                                                                     |
 | Payments and inventory | Local HTTP services with their own databases                                          | These are development implementations, not external provider integrations.                                                                                                                                                                                  |
 | Object storage and ETL | Moto S3-compatible mock plus Dagster                                                  | Moto is in-memory. Dagster writes curated Parquet but is not configured here with a production data warehouse.                                                                                                                                              |
-| Metrics and dashboards | Shared `prom-client` registration, Prometheus, Grafana                                | Prometheus scrapes all six HTTP services; orders additionally exports outbox-delivery gauges and alerts. Grafana provides a local metrics view.                                                                                                             |
+| Metrics and dashboards | Shared `prom-client` registration, Prometheus, Grafana                                | Prometheus scrapes all six HTTP services plus collector and Tempo internal metrics; orders additionally exports outbox-delivery gauges and alerts. Grafana provides a local metrics view.                                                                   |
 | Traces                 | OpenTelemetry bootstrap in all six HTTP services; OTLP/HTTP collector, Tempo, Grafana | W3C context is persisted in the orders outbox and continued through NATS headers, Temporal input/activities, and payment/inventory HTTP calls. Tempo stores local traces for bounded retention and Grafana can query them. CI does not verify trace search. |
 | CI                     | GitHub Actions plus local build/test scripts                                          | Automatic CI is paused for pushes and PRs targeting `dev`; required checks remain for `stage` and `main`. CI validates but does not deploy the system.                                                                                                      |
 
 The system's strongest end-to-end example is order creation: the API writes
-the order and event atomically, separate workers publish/export/dispatch
-background work, and Dagster can transform raw events into daily Parquet.
+the order and event atomically; independent outbox workers publish to
+JetStream and export raw data, while workflow dispatch waits for successful
+NATS publication. Dagster can transform raw events into daily Parquet.
 See the walkthrough for the request's synchronous and asynchronous boundaries.
 
 ## Explicitly not current implementation
@@ -42,11 +43,12 @@ about the running local stack:
 
 - SNS/SQS, EventBridge, AWS S3, ECR, ECS/EKS, RDS, Step Functions, X-Ray, and
   CDK-based deployment.
-- A durable NATS topology with acknowledged consumers.
+- An application NATS consumer with explicit acknowledgements and idempotent
+  side effects; broker publish acknowledgement is not consumer completion.
 - A real payment-provider connection, production inventory source,
   notification delivery, or shipping workflow.
-- Durable NATS consumers, domain-specific metrics beyond order delivery, and
-  complete operational alerting/runbooks.
+- Domain-specific metrics beyond order delivery, Alertmanager notifications,
+  and complete operational runbooks.
 - Kubernetes behavior in a live cluster, GraphQL/Apollo Federation, RabbitMQ,
   and AI-agent workflows. These are possible future study topics only.
 
