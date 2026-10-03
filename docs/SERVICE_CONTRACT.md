@@ -51,11 +51,17 @@ activities create spans and inject context into payment/inventory HTTP calls.
 The receiver services can therefore continue the same trace. Correlation IDs
 remain the business-level join key and are logged independently of traces.
 
-This asynchronous path is distinct from a durable message-consumer contract:
-the repository currently has no application NATS consumer. The order-journey
-test subscribes only to verify the event and its W3C headers. The local OTel
-collector exports traces to Tempo, which Grafana can query; trace search and
-retention are not verified by the hosted order-journey job. See
+The orders outbox publishes to a file-backed JetStream stream and marks the
+outbox row published only after JetStream returns a publish acknowledgement.
+The stream has bounded retention and refuses new messages when its byte limit
+is reached, allowing the outbox to retry instead of silently evicting retained
+messages. Event IDs provide broker-side duplicate suppression for a bounded
+window. This confirms broker acceptance, not consumer processing: there is no
+application NATS consumer yet, and the order-journey test subscribes only to
+verify the event and its W3C headers. The local OTel collector uses a bounded
+in-memory retry queue to export traces to Tempo, which Grafana can query.
+Prometheus scrapes collector and Tempo self-metrics; trace search and retention
+are not verified by the hosted order-journey job. See
 [`diagrams.md`](./diagrams.md) for the context boundaries and
 [`README_NEXT_STEPS.md`](./README_NEXT_STEPS.md) for the live verification
 status.
@@ -108,13 +114,13 @@ publication failure.
 
 ## Build and test ownership
 
-| Owner               | Responsibility                                                                                    | Verification                                                             |
-| ------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `packages/common`   | Request spans/headers/logging, metric registration, common health report                          | `pnpm --filter @app/common run build`; focused Vitest tests              |
-| Each HTTP service   | Routes, dependency ownership, config validation, migrations, service tests                        | `pnpm --filter <service-package> run build`; service tests where defined |
-| Compose             | Runtime dependency graph, health checks, environment and service DNS                              | `docker compose -f infra/docker-compose.dev.yml config --quiet`          |
-| Prometheus/Grafana  | Scrape all six HTTP services, alert on scrape failure, display service and order-delivery signals | live target query plus provisioned dashboard check                       |
-| Repository operator | Verify the integrated contract without rebuilding or changing data                                | `pnpm docker:service-contract`                                           |
+| Owner               | Responsibility                                                                                                     | Verification                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| `packages/common`   | Request spans/headers/logging, metric registration, common health report                                           | `pnpm --filter @app/common run build`; focused Vitest tests              |
+| Each HTTP service   | Routes, dependency ownership, config validation, migrations, service tests                                         | `pnpm --filter <service-package> run build`; service tests where defined |
+| Compose             | Runtime dependency graph, health checks, environment and service DNS                                               | `docker compose -f infra/docker-compose.dev.yml config --quiet`          |
+| Prometheus/Grafana  | Scrape six HTTP services plus collector/Tempo metrics, evaluate alerts, display service and order-delivery signals | live target query plus provisioned dashboard check                       |
+| Repository operator | Verify the integrated contract without rebuilding or changing data                                                 | `pnpm docker:service-contract`                                           |
 
 Build shared-bootstrap consumers sequentially to keep peak memory bounded.
 After building, start the stack with `--no-build`; do not combine a contract

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createDomainEvent } from '@app/contracts';
 import { startUserCreatedWorkflowFromEvent } from '../../src/temporal';
+import type { NatsPublisher } from '../../src/nats';
 import { publishEvent } from '../../src/nats';
 
 describe('user-created event smoke flow', () => {
@@ -9,7 +10,7 @@ describe('user-created event smoke flow', () => {
       start: vi.fn().mockResolvedValue({ workflowId: 'wf-user-42', runId: 'run-42' }),
     };
 
-    const published: Array<{ subject: string; body: any }> = [];
+    const published: Array<{ subject: string; body: unknown }> = [];
     const event = createDomainEvent({
       eventType: 'user.created.v1',
       sourceService: 'users-service',
@@ -22,18 +23,19 @@ describe('user-created event smoke flow', () => {
       },
     });
 
-    const nc = {
-      publish: (subject: string, data: Uint8Array) => {
+    const nc: NatsPublisher = {
+      publish: async (subject: string, data: Uint8Array) => {
         published.push({
           subject,
           body: JSON.parse(new TextDecoder().decode(data)),
         });
+        return { stream: 'USERS', seq: 1, duplicate: false };
       },
-    } as any;
+    };
 
-    await publishEvent(nc, 'app.users.v1.user.created', event);
+    await publishEvent(nc, 'app.users.v1.user.created', event, event.eventId);
 
-    const delivered = published[0].body;
+    const delivered = published[0].body as typeof event;
     const result = await startUserCreatedWorkflowFromEvent({ workflow }, delivered as typeof event);
 
     expect(published).toHaveLength(1);

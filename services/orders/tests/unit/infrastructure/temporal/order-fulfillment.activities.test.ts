@@ -79,6 +79,22 @@ describe('order fulfillment activities', () => {
     });
   });
 
+  it('fails permanently when an external service returns malformed JSON', async () => {
+    const activities = createActivities(
+      vi.fn().mockResolvedValue(
+        new Response('not-json', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+    );
+
+    await expect(activities.chargePayment(input)).rejects.toMatchObject({
+      nonRetryable: true,
+      type: 'ExternalContractError',
+    });
+  });
+
   it('leaves transient service failures retryable', async () => {
     const activities = createActivities(
       vi.fn().mockResolvedValue(response({ message: 'temporarily unavailable' }, 503))

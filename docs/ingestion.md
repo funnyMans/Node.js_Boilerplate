@@ -1,24 +1,30 @@
 # Ingestion Patterns
 
-Two main modes: API-driven (file/record upload) and streaming.
+This page contrasts general ingestion patterns with the local order event
+pipeline. The API-upload and managed streaming examples are design patterns,
+not additional running integrations in this repository.
 
-API-driven
+## API-driven uploads (pattern, not implemented here)
 
 - Flow: Client → API Gateway → validate (Zod) → store raw in S3 → metadata in DB → emit event (SNS).
 - Useful for: user uploads, webhook ingestion.
 
-Streaming / telemetry
+## Streaming (general pattern; local order path described below)
 
-- Flow: Producers → Kinesis (prod) or NATS (dev) → consumers → Firehose → S3.
-- Use schema enforcement at producer (Zod) and CI contract checks.
-- The orders service also independently exports its durable `orders.order.created` outbox events to S3-compatible raw storage for batch ETL. This idempotent retry loop is separate from NATS delivery.
+- A common managed-cloud design is producers → Kinesis → consumers →
+  Firehose → S3. This repository does not implement that path.
+- The local order path persists an event in the orders PostgreSQL outbox,
+  publishes it to a file-backed JetStream stream, and independently exports
+  the same event to Moto for batch ETL. There is no application NATS consumer.
+- Validate untrusted events at receiving boundaries; compile-time TypeScript
+  types alone do not validate messages at runtime.
 
-ETL trigger points
+## ETL trigger points (alternatives, not configured locally)
 
 - File arrival (S3) → EventBridge / S3 event → Dagster or Lambda job.
 - Event-driven: SNS/SQS messages trigger consumers for near-real-time processing.
 
-Local development
+## Local development
 
 - The runnable application stack is `infra/docker-compose.dev.yml`; its
   operations guide is [`infra/README.md`](../infra/README.md).

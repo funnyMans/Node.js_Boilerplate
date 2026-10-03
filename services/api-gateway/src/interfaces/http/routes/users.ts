@@ -54,7 +54,7 @@ export function registerUserRoutes(
 
     try {
       const requestContext = getDownstreamRequestContext(request);
-      const res = await fetch(`${usersServiceUrl}/users/${id}`, {
+      const res = await fetch(`${usersServiceUrl}/users/${encodeURIComponent(id)}`, {
         headers: {
           'x-authenticated-user-id': session.userId,
           ...requestContext,
@@ -100,7 +100,7 @@ export function registerUserRoutes(
 
     try {
       const requestContext = getDownstreamRequestContext(request);
-      const res = await fetch(`${usersServiceUrl}/users/${id}`, {
+      const res = await fetch(`${usersServiceUrl}/users/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         headers: {
           'content-type': 'application/json',

@@ -6,10 +6,7 @@ sequenceDiagram
   participant DB as PostgreSQL
   participant N as NATS
   participant T as Temporal
-  participant P as Payments Service
-  participant I as Inventory Service
   participant S as Moto S3
-  participant D as Dagster
 
   C->>G: POST /orders
   G->>A: validate caller
@@ -17,22 +14,22 @@ sequenceDiagram
   G->>O: forward request and identity
   O->>DB: insert order and outbox event in one transaction
   DB-->>O: commit
-  O-->>C: order response
 
-  par NATS publication
+  par HTTP response
+    O-->>G: order response
+    G-->>C: order response
+  and NATS publication
     O->>DB: claim pending event
-    O->>N: publish and flush
-    O->>DB: mark published
+    O->>N: publish to ORDERS JetStream
+    N-->>O: publish acknowledgement
+    O->>DB: mark published after broker acknowledgement
   and Raw data export
+    O->>DB: claim raw-export-pending event
     O->>S: write deterministic JSONL object
     O->>DB: record export result
   and Workflow dispatch
+    O->>DB: claim workflow only after NATS publication
     O->>T: start deterministic workflow
+    T-->>O: workflow start accepted
+    O->>DB: mark workflow started
   end
-
-  T->>O: run workflow activities
-  O->>P: charge or refund over HTTP
-  O->>I: reserve inventory over HTTP
-  T->>O: confirm or cancel order
-  D->>S: read raw events
-  D->>S: write curated Parquet

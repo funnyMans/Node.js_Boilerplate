@@ -6,7 +6,7 @@ describe('temporal workflow helpers', () => {
     const start = vi.fn().mockResolvedValue({ workflowId: 'wf-user-123', runId: 'run-1' });
     const client = {
       workflow: { start },
-    } as any;
+    };
 
     const result = await startUserCreatedWorkflow(client, {
       userId: 'u_123',

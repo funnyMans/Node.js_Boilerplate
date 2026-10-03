@@ -82,7 +82,7 @@ export function initObservability(options?: { serviceName?: string; endpoint?: s
 
   const sdk = new NodeSDK({
     serviceName,
-    traceExporter: new OTLPTraceExporter({ url: endpoint }),
+    traceExporter: new OTLPTraceExporter({ url: endpoint, timeoutMillis: 5000 }),
     instrumentations: [new HttpInstrumentation(), new PinoInstrumentation()],
   });
 

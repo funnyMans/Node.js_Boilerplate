@@ -1,14 +1,18 @@
+import type { NatsConnection } from 'nats';
+
 export type HealthStateValue = 'ok' | 'degraded' | 'down' | 'unknown';
+
+export type TemporalHealthClient = {
+  connection: {
+    ensureConnected: () => Promise<void>;
+  };
+};
 
 export type RedisHealthClient = {
   ping: () => Promise<string> | string;
 };
 
-export type NatsHealthClient = {
-  status?: () => unknown;
-  isClosed?: () => boolean;
-  isDraining?: () => boolean;
-};
+export type NatsHealthClient = Pick<NatsConnection, 'isClosed' | 'isDraining'>;
 
 export async function getRedisHealth(redis?: RedisHealthClient): Promise<HealthStateValue> {
   if (!redis) return 'unknown';
@@ -25,19 +29,8 @@ export async function getNatsHealth(nc?: NatsHealthClient): Promise<HealthStateV
   if (!nc) return 'unknown';
 
   try {
-    if (typeof nc.isClosed === 'function' && nc.isClosed()) return 'down';
-    if (typeof nc.isDraining === 'function' && nc.isDraining()) return 'degraded';
-
-    if (typeof nc.status === 'function') {
-      const status = nc.status();
-      if (typeof status === 'string') {
-        return status === 'connect' || status === 'reconnecting' ? 'ok' : 'degraded';
-      }
-      if (status && typeof status === 'object') {
-        return 'ok';
-      }
-    }
-
+    if (nc.isClosed()) return 'down';
+    if (nc.isDraining()) return 'degraded';
     return 'ok';
   } catch {
     return 'down';
@@ -45,25 +38,22 @@ export async function getNatsHealth(nc?: NatsHealthClient): Promise<HealthStateV
 }
 
 export async function getTemporalHealth(
-  clientOrAddress?: any,
+  clientOrAddress?: TemporalHealthClient | string,
   maybeAddress?: string
 ): Promise<HealthStateValue> {
   if (!clientOrAddress && !maybeAddress && !process.env.TEMPORAL_ADDRESS) {
     return 'unknown';
   }
 
-  // If a Temporal Client instance is provided, assume it's connected (fast-path).
   if (clientOrAddress && typeof clientOrAddress === 'object') {
     try {
-      // If the client exposes a connection with close, consider it alive.
-      // We avoid opening a new connection here to prefer using the existing instance.
+      await clientOrAddress.connection.ensureConnected();
       return 'ok';
     } catch {
       return 'down';
     }
   }
 
-  // Otherwise, try to establish a short-lived connection to Temporal to verify reachability
   try {
     const { Connection } = await import('@temporalio/client');
     const addr = clientOrAddress ?? maybeAddress ?? process.env.TEMPORAL_ADDRESS;
@@ -81,43 +71,82 @@ export async function getTemporalHealth(
   }
 }
 
-// Simple cached wrapper for Temporal health to avoid opening a new connection on every request.
-let _temporalCache: { state: HealthStateValue; ts: number } | null = null;
+type HealthCacheEntry = {
+  expiresAt: number;
+  result: Promise<HealthStateValue>;
+};
+
+function getCachedHealth(
+  getEntry: () => HealthCacheEntry | undefined,
+  setEntry: (entry: HealthCacheEntry) => void,
+  ttl: number,
+  check: () => Promise<HealthStateValue>
+): Promise<HealthStateValue> {
+  const now = Date.now();
+  const cached = getEntry();
+  if (cached && now < cached.expiresAt) return cached.result;
+
+  const result = check();
+  setEntry({ expiresAt: now + ttl, result });
+  return result;
+}
+
+const temporalClientHealthCache = new WeakMap<object, HealthCacheEntry>();
+const temporalAddressHealthCache = new Map<string, HealthCacheEntry>();
+const redisHealthCache = new WeakMap<object, HealthCacheEntry>();
+const natsHealthCache = new WeakMap<object, HealthCacheEntry>();
 
 export async function getTemporalHealthCached(
-  clientOrAddress?: any,
+  clientOrAddress?: TemporalHealthClient | string,
   maybeAddress?: string
 ): Promise<HealthStateValue> {
   const ttl = Number(process.env.TEMPORAL_HEALTH_TTL_MS ?? 5000);
-  const now = Date.now();
-  if (_temporalCache && now - _temporalCache.ts < ttl) {
-    return _temporalCache.state;
+  const target = clientOrAddress ?? maybeAddress ?? process.env.TEMPORAL_ADDRESS;
+  if (!target) return getTemporalHealth();
+
+  if (typeof target === 'string') {
+    return getCachedHealth(
+      () => temporalAddressHealthCache.get(target),
+      (entry) => {
+        const now = Date.now();
+        for (const [address, cached] of temporalAddressHealthCache) {
+          if (!(now < cached.expiresAt)) temporalAddressHealthCache.delete(address);
+        }
+        temporalAddressHealthCache.set(target, entry);
+      },
+      ttl,
+      () => getTemporalHealth(target)
+    );
   }
 
-  const state = await getTemporalHealth(clientOrAddress, maybeAddress);
-  _temporalCache = { state, ts: now };
-  return state;
+  return getCachedHealth(
+    () => temporalClientHealthCache.get(target),
+    (entry) => temporalClientHealthCache.set(target, entry),
+    ttl,
+    () => getTemporalHealth(target)
+  );
 }
 
-// Cached wrappers for Redis and NATS
-let _redisCache: { state: HealthStateValue; ts: number } | null = null;
 export async function getRedisHealthCached(redis?: RedisHealthClient): Promise<HealthStateValue> {
-  const ttl = Number(process.env.REDIS_HEALTH_TTL_MS ?? 2000);
-  const now = Date.now();
-  if (_redisCache && now - _redisCache.ts < ttl) return _redisCache.state;
+  if (!redis) return getRedisHealth();
 
-  const state = await getRedisHealth(redis);
-  _redisCache = { state, ts: now };
-  return state;
+  const ttl = Number(process.env.REDIS_HEALTH_TTL_MS ?? 2000);
+  return getCachedHealth(
+    () => redisHealthCache.get(redis),
+    (entry) => redisHealthCache.set(redis, entry),
+    ttl,
+    () => getRedisHealth(redis)
+  );
 }
 
-let _natsCache: { state: HealthStateValue; ts: number } | null = null;
 export async function getNatsHealthCached(nc?: NatsHealthClient): Promise<HealthStateValue> {
-  const ttl = Number(process.env.NATS_HEALTH_TTL_MS ?? 2000);
-  const now = Date.now();
-  if (_natsCache && now - _natsCache.ts < ttl) return _natsCache.state;
+  if (!nc) return getNatsHealth();
 
-  const state = await getNatsHealth(nc);
-  _natsCache = { state, ts: now };
-  return state;
+  const ttl = Number(process.env.NATS_HEALTH_TTL_MS ?? 2000);
+  return getCachedHealth(
+    () => natsHealthCache.get(nc),
+    (entry) => natsHealthCache.set(nc, entry),
+    ttl,
+    () => getNatsHealth(nc)
+  );
 }

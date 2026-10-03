@@ -17,3 +17,8 @@ const { shutdown } = createServiceBootstrap(server, {
 
 Use `server.log` for infrastructure clients and background workers so their
 logs share the service's configured Pino instance.
+
+Build service configuration with `createConfig` and a Zod schema. The helper
+validates the schema against the provided environment source in one pass,
+applies schema defaults, and reports all invalid configured keys together
+without including their raw values in the error.

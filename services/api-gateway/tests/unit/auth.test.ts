@@ -40,9 +40,13 @@ describe('gateway auth client', () => {
       role: 'user',
       expiresAt: '2026-09-26T00:00:00.000Z',
     });
-    expect(fetch).toHaveBeenCalledWith('http://auth-service:3002/auth/session', {
-      headers: { authorization: 'Bearer token' },
-    });
+    expect(fetch).toHaveBeenCalledWith(
+      'http://auth-service:3002/auth/session',
+      expect.objectContaining({
+        headers: { authorization: expect.stringMatching(/^Bearer /) },
+        signal: expect.any(AbortSignal),
+      })
+    );
   });
 
   it('returns null for an invalid session', async () => {
@@ -69,6 +73,40 @@ describe('gateway auth client', () => {
         headers: expect.objectContaining(requestContext),
       })
     );
+  });
+
+  it.each([
+    { valid: true, userId: 'user-1', role: 'owner', expiresAt: '2026-09-26T00:00:00.000Z' },
+    { valid: true, userId: ' ', role: 'user', expiresAt: '2026-09-26T00:00:00.000Z' },
+    { valid: true, userId: 'user-1', role: 'user', expiresAt: 'not-a-date' },
+    { valid: false, userId: 'user-1', role: 'user', expiresAt: '2026-09-26T00:00:00.000Z' },
+  ])('rejects malformed successful session responses: %o', async (payload) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+    );
+
+    await expect(
+      new HttpAuthClient('http://auth-service:3002').validateSession('token')
+    ).rejects.toMatchObject({ name: 'AuthServiceUnavailableError' });
+  });
+
+  it('sends a bounded abort signal with session validation requests', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new HttpAuthClient('http://auth-service:3002', 10).validateSession('token');
+
+    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(options.signal).toBeInstanceOf(AbortSignal);
+    expect(options.signal?.aborted).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(options.signal?.aborted).toBe(true);
   });
 });
 

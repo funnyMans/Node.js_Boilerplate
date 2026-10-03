@@ -50,7 +50,7 @@ export function createLogger(serviceName: string, level = process.env.LOG_LEVEL 
       err: (err) => ({
         type: err?.constructor?.name,
         message: err?.message,
-        code: (err as any)?.code,
+        code: err && 'code' in err ? err.code : undefined,
         stack: err?.stack,
       }),
     },

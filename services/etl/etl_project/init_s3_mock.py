@@ -4,8 +4,9 @@ import sys
 import time
 from pathlib import Path
 
-import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+
+from etl_project.s3_client import create_s3_client
 
 SAMPLE_FILE = Path("/opt/dagster/sample_data/orders.jsonl")
 SAMPLE_KEY = "orders/created_date=2026-09-27/events.jsonl"
@@ -13,12 +14,11 @@ BUCKETS = ("raw", "curated")
 
 
 def main() -> None:
-    client = boto3.client(
-        "s3",
+    client = create_s3_client(
         endpoint_url=os.getenv("S3_ENDPOINT_URL", "http://s3-mock:9000"),
         region_name=os.getenv("AWS_REGION", "us-east-1"),
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
     )
 
     last_error: Exception | None = None

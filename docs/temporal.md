@@ -7,7 +7,10 @@ payment, inventory, or workflow completion.
 ## Local components
 
 - The `temporal` Compose service runs the Temporal auto-setup image and is
-  configured to use the local PostgreSQL server.
+  configured to use the local PostgreSQL server. Its version and image digest
+  are pinned, and the setup explicitly names its `temporal` and
+  `temporal_visibility` databases. The default namespace retains workflow
+  history for 24 hours.
 - The orders service contains both the workflow worker and the database-backed
   dispatcher that starts workflows after the corresponding NATS outbox event
   is published.
@@ -37,13 +40,22 @@ business outcome. Business responses such as payment decline or inventory
 unavailability are distinct from transient network/server failures.
 Notifications and shipment fulfillment are not part of the current workflow.
 
+The workflow worker uses the `orders-fulfillment` task queue. Activities have
+a 30-second start-to-close timeout, a one-second initial retry interval, and
+exponential backoff capped at one minute. The outbox dispatcher uses a
+deterministic workflow ID per order and records start/retry/terminal-failure
+state in PostgreSQL. Temporal start acceptance and business-workflow
+completion are separate stages.
+
 ## Local operation and boundaries
 
 The local Compose setup uses Temporal for workflow orchestration and local HTTP
 payments/inventory services. Those services are development implementations;
 production provider integrations, deployment, and recovery guarantees remain
-future work. Temporal startup uses a `service_started` dependency condition in
-Compose, which does not prove Temporal is ready to accept workflow starts.
+future work. The server's Compose health check uses Temporal's gRPC cluster
+health API, and the orders service and gateway wait for Temporal to be serving
+before startup. Workflow state is persisted by the local Postgres instance;
+this single-node setup has no high availability or backup guarantee.
 
 Use [`orders_workflow.md`](./orders_workflow.md) for the request/event path and
 HTTP activity contracts, and [`diagrams.md`](./diagrams.md) for the system map.

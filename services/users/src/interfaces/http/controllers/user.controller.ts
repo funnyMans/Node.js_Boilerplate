@@ -12,6 +12,7 @@ import {
   parseUpdateUserRequest,
 } from '../request-parsers/user.request';
 import { sendNotFoundError, sendValidationError } from '../error-mappers/user.http-error';
+import { UserNotFoundError } from '../../../app/errors/user-not-found.error';
 
 export class UserController {
   constructor(
@@ -62,8 +63,11 @@ export class UserController {
     try {
       const user = await this.updateUserUseCase.execute(id, parsed.data);
       return reply.send(UserMapper.toDto(user));
-    } catch {
-      return sendNotFoundError(reply);
+    } catch (error) {
+      if (error instanceof UserNotFoundError) {
+        return sendNotFoundError(reply);
+      }
+      throw error;
     }
   }
 

@@ -2,9 +2,42 @@ export const userStatuses = ['active', 'blocked', 'deleted'] as const;
 
 export type UserStatus = (typeof userStatuses)[number];
 
-export type EventEnvelope<TPayload> = {
+export const eventTypes = {
+  userCreated: 'user.created.v1',
+  orderCreated: 'order.created.v1',
+  sessionCreated: 'session.created.v1',
+  sessionRevoked: 'session.revoked.v1',
+} as const;
+
+type EventPayloadByType = {
+  [eventTypes.userCreated]: {
+    userId: string;
+    email: string;
+    status: UserStatus;
+  };
+  [eventTypes.orderCreated]: {
+    orderId: string;
+    userId: string;
+    items: OrderItemDto[];
+  };
+  [eventTypes.sessionCreated]: {
+    sessionId: string;
+    userId: string;
+    role: AuthRole;
+    expiresAt: string;
+  };
+  [eventTypes.sessionRevoked]: {
+    sessionId: string;
+    userId: string;
+    reason: 'logout' | 'refresh-reuse' | 'admin-revoked';
+  };
+};
+
+export type DomainEventType = keyof EventPayloadByType;
+
+export type EventEnvelope<TPayload, TEventType extends string = string> = {
   eventId: string;
-  eventType: string;
+  eventType: TEventType;
   sourceService: string;
   version: number;
   occurredAt: string;
@@ -15,16 +48,16 @@ export type EventEnvelope<TPayload> = {
   payload: TPayload;
 };
 
-export function createDomainEvent<TPayload>(params: {
-  eventType: string;
+export function createDomainEvent<TEventType extends DomainEventType>(params: {
+  eventType: TEventType;
   sourceService: string;
   correlationId: string;
-  payload: TPayload;
+  payload: EventPayloadByType[TEventType];
   causationId?: string;
   traceId?: string;
   retryable?: boolean;
   version?: number;
-}): EventEnvelope<TPayload> {
+}): EventEnvelope<EventPayloadByType[TEventType], TEventType> {
   return {
     eventId: crypto.randomUUID(),
     eventType: params.eventType,
@@ -39,11 +72,10 @@ export function createDomainEvent<TPayload>(params: {
   };
 }
 
-export type UserCreatedEvent = EventEnvelope<{
-  userId: string;
-  email: string;
-  status: UserStatus;
-}>;
+export type UserCreatedEvent = EventEnvelope<
+  EventPayloadByType[typeof eventTypes.userCreated],
+  typeof eventTypes.userCreated
+>;
 
 export const orderStatuses = ['pending', 'confirmed', 'cancelled', 'fulfilled'] as const;
 export type OrderStatus = (typeof orderStatuses)[number];
@@ -66,24 +98,20 @@ export type OrderDto = {
   updatedAt: string;
 };
 
-export type OrderCreatedEvent = EventEnvelope<{
-  orderId: string;
-  userId: string;
-  items: OrderItemDto[];
-}>;
+export type OrderCreatedEvent = EventEnvelope<
+  EventPayloadByType[typeof eventTypes.orderCreated],
+  typeof eventTypes.orderCreated
+>;
 
-export type SessionCreatedEvent = EventEnvelope<{
-  sessionId: string;
-  userId: string;
-  role: AuthRole;
-  expiresAt: string;
-}>;
+export type SessionCreatedEvent = EventEnvelope<
+  EventPayloadByType[typeof eventTypes.sessionCreated],
+  typeof eventTypes.sessionCreated
+>;
 
-export type SessionRevokedEvent = EventEnvelope<{
-  sessionId: string;
-  userId: string;
-  reason: 'logout' | 'refresh-reuse' | 'admin-revoked';
-}>;
+export type SessionRevokedEvent = EventEnvelope<
+  EventPayloadByType[typeof eventTypes.sessionRevoked],
+  typeof eventTypes.sessionRevoked
+>;
 
 export type UserDto = {
   id: string;
@@ -187,10 +215,3 @@ export type AuthErrorCode =
 export type AuthErrorShape = AppErrorShape & {
   code: AuthErrorCode;
 };
-
-export const eventTypes = {
-  userCreated: 'user.created.v1',
-  orderCreated: 'order.created.v1',
-  sessionCreated: 'session.created.v1',
-  sessionRevoked: 'session.revoked.v1',
-} as const;

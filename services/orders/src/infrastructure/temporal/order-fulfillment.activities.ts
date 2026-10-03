@@ -70,7 +70,15 @@ async function postJson<T>(
   }
   if (!response.ok) permanentFailure(`External service rejected the request (${response.status})`);
 
-  const parsed = schema.safeParse(await response.json());
+  let responseBody: unknown;
+  try {
+    responseBody = await response.json();
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    permanentFailure('External service response did not contain valid JSON');
+  }
+
+  const parsed = schema.safeParse(responseBody);
   if (!parsed.success) permanentFailure('External service response did not match its contract');
   return parsed.data;
 }

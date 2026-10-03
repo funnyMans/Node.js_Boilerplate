@@ -13,16 +13,202 @@ ETL, and monitoring fit together, see
 
 Compose creates one private network and starts these services:
 
-| Role                         | Compose service(s)                                                        | Notes                                                                                                             |
-| ---------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Persistent state             | `postgres`, `redis`                                                       | Postgres hosts separate application databases; Redis is shared by the local services.                             |
-| Messaging and orchestration  | `nats`, `temporal`                                                        | Orders publishes outbox events to NATS and dispatches fulfillment work to Temporal.                               |
-| HTTP applications            | `api-gateway`, `users`, `auth-service`, `orders`, `payments`, `inventory` | The gateway is the only published application entry point. Internal services use Compose DNS names.               |
-| Local object storage and ETL | `s3-mock`, `s3-mock-init`, `dagster`                                      | Moto is an in-memory S3-compatible endpoint. The init job seeds buckets and sample events, then exits.            |
-| Monitoring                   | `prometheus`, `grafana`, `otel-collector`, `tempo`                        | Prometheus scrapes service metrics; the collector forwards traces to Tempo; Grafana provisions both data sources. |
-| Edge proxy                   | `nginx`                                                                   | Exposes the local proxy on port 8080 and forwards application requests to the gateway.                            |
+| Role                         | Compose service(s)                                                        | Notes                                                                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Database and cache           | `postgres`, `redis`                                                       | Postgres hosts separate application databases; Redis is shared but deliberately ephemeral and not persisted.                                |
+| Messaging and orchestration  | `nats`, `temporal`                                                        | Orders publishes outbox events to NATS and dispatches fulfillment work to Temporal.                                                         |
+| HTTP applications            | `api-gateway`, `users`, `auth-service`, `orders`, `payments`, `inventory` | The gateway is the intended user-facing entry point; auth is also loopback-published for local development. Internal calls use Compose DNS. |
+| Local object storage and ETL | `s3-mock`, `s3-mock-init`, `dagster`                                      | Moto is an in-memory S3-compatible endpoint. The init job seeds buckets and sample events, then exits.                                      |
+| Monitoring                   | `prometheus`, `grafana`, `otel-collector`, `tempo`                        | Prometheus scrapes service, collector, and Tempo metrics; the collector forwards traces to Tempo; Grafana provisions metrics/traces.        |
+| Edge proxy                   | `nginx`                                                                   | Exposes the local proxy on port 8080 and forwards application requests to the gateway.                                                      |
+
+### Compose lifecycle boundary
+
+Long-running application and persistent infrastructure containers use
+`restart: unless-stopped`; stateful services also have a graceful stop window.
+This restarts a process after an unexpected exit, but a restart policy does
+not make an unhealthy container healthy, rerun a completed initialization
+job, or reapply `depends_on` health ordering after Docker Engine restarts. Use
+`docker compose up -d` to re-evaluate the configured startup dependencies.
+
+Moto is intentionally excluded from automatic restart: its objects live only
+in memory, so a process restart would bring back an empty S3 endpoint. The
+separate seed job must complete before dependent app services are brought up.
+This is a deliberate local-data limitation, not an automatic recovery path.
+
+### Dagster boundary
+
+Dagster's local instance uses SQLite run, event-log, and schedule storage
+under `/opt/dagster/dagster_home`, which is backed by the `dagster-home`
+named volume. This is appropriate for the current single-process learning
+setup; it is not a shared multi-replica metadata store. The UI binds to
+loopback on the host, restarts unless explicitly stopped, and has a 30-second
+shutdown grace period. Its health check calls Dagster's `/server_info`
+endpoint rather than merely checking whether a TCP port accepts connections.
+
+The current code location defines one partitioned asset job, but no schedules
+or sensors. Materialization is manual, so the Dagster daemon's presence does
+not imply that ETL runs automatically. Run metadata survives container
+recreation in the named volume, while the source and curated objects remain
+in the separate in-memory Moto service and are lost when Moto is recreated.
+Use a real external metadata store, object-store persistence, and an explicit
+scheduling/recovery policy only if this app grows beyond the local learning
+use case.
+
+### Traces and telemetry boundary
+
+Services export OTLP/HTTP traces to the collector. Its memory limiter caps
+collector process data at 256 MiB (with a 64 MiB spike allowance); receive
+requests are capped at 16 MiB. A small in-memory exporter queue retries
+temporary Tempo failures for up to five minutes, then reports a failed export
+instead of growing without bound. The collector health endpoint checks the
+collector process, while Prometheus scrapes the collector and Tempo's internal
+metrics for pipeline diagnostics.
+
+Tempo stores traces locally on the `tempo-data` volume and retains blocks for
+48 hours. The Tempo image has no shell-based probe utility, so Compose does
+not claim a Tempo health check; the collector starts after the Tempo process
+and buffers/retries temporary startup failures. Its `/ready` endpoint can be
+checked manually, but no Compose dependency waits on it. Service SDK exports
+have a five-second timeout. None of these settings make traces durable
+business records: exporter/collector queues are in memory, sampling is
+currently unsampled (all traces), and logs/correlation IDs remain the fallback
+when telemetry is dropped. This is a single-node local tracing setup, not a
+highly available observability platform.
+
+### Prometheus and Grafana boundary
+
+Prometheus keeps its TSDB in the `prometheus-data` volume and retains data for
+at most 15 days or 2 GB of TSDB blocks, whichever limit is reached first. The
+volume preserves local metrics across container recreation; the configured
+health check establishes that Prometheus serves its health endpoint, not that
+every scrape target is healthy. Grafana's database is persisted separately in
+`grafana-data`; its datasource and dashboard are provisioned from the checked-in
+files.
+
+Prometheus evaluates the checked-in alert rules, but this stack has no
+Alertmanager, so firing alerts are visible in Prometheus and do not send
+notifications. Grafana and Prometheus host ports bind to loopback. The default
+Grafana credentials (`admin`/`admin`) are convenient local-development values,
+not access control; override them in `.env` and do not expose this stack to
+other machines as configured.
+
+### Nginx boundary
+
+Nginx is the local HTTP reverse proxy on loopback port 8080. It forwards
+requests and the standard client/protocol headers to the API gateway; a
+per-client request limiter permits 10 requests per second with a burst of 20
+and returns HTTP 429 when exceeded. The container health check calls `/health`
+through Nginx, so it checks the proxy-to-gateway path, not merely that the
+Nginx worker process is running.
+
+The proxy resolves the gateway through Docker DNS at request time and refreshes
+cached addresses every five seconds. This allows the proxy to follow a
+recreated gateway without restarting Nginx; a gateway replacement can still
+cause brief request failures while DNS updates.
+
+### Postgres boundary
+
+The local database server is pinned to Postgres 15.19 on Debian Bookworm by
+image digest. It uses a named data volume, 256 MiB of container shared memory,
+and a `pg_isready` health check with startup grace. Host authentication uses
+SCRAM-SHA-256 when the database volume is initialized. PostgreSQL's active
+defaults retain `fsync`, `full_page_writes`, and `synchronous_commit`; these
+provide local crash-durability behavior but are not a backup strategy.
+
+The initialization script creates the comma-separated databases configured
+by `POSTGRES_MULTIPLE_DATABASES`, excluding the initial `POSTGRES_DB`. This
+only runs when the official Postgres image initializes an empty data
+directory; changing the list does not create databases in an existing volume.
+Separate databases currently provide logical separation only: every
+application and Temporal uses the same local `dev` superuser credentials.
+That is convenient for this learning stack, but not service-level access
+isolation. The volume persists through container recreation but has no
+automated backup/restore process or host-failure protection.
+
+### Temporal boundary
+
+The local Temporal server is pinned by both version and image digest. Its
+auto-setup configuration uses explicit `temporal` and `temporal_visibility`
+databases on the shared Postgres instance, with a bounded 24-hour default
+namespace history-retention period. The Compose health check uses
+Temporal's gRPC cluster-health command; orders and the API gateway wait for
+that check before starting, rather than merely waiting for the container
+process to exist.
+
+Workflow history is stored in Postgres, whose named volume persists across
+container recreation. This is still a single local Temporal server and a
+single Postgres instance: there is no high availability, backup/restore
+procedure, TLS/authentication, or production deployment configuration.
+Temporal durability here means persisted workflow state, not that the worker
+or downstream payment/inventory services are always available.
+
+Applying a Temporal server-version change to an existing Postgres volume runs
+the image's schema setup/migration path. Back up the local Postgres volume
+before deliberately recreating the service, and verify pending workflows
+afterward. The namespace-retention environment setting is applied when the
+default namespace is first created; changing an existing namespace's
+retention requires an explicit Temporal namespace update.
+
+### Redis boundary
+
+The local Redis image is pinned to `7.4.11-alpine`, has a 256 MiB dataset
+limit, and uses `noeviction` so writes fail visibly rather than silently
+discarding keys. RDB snapshots and AOF are disabled, and no Redis volume is
+mounted: Redis currently serves only health probes, with no application cache
+or BullMQ queue/worker in use. These settings bound local resource use without
+suggesting that Redis state survives container replacement. Before Redis
+stores jobs or business-relevant cache data, choose persistence, eviction,
+recovery, and alerting from that workload's actual guarantees.
+
+The application Redis clients use bounded connection/command timeouts and
+continue reconnecting with capped backoff. This allows health checks to report
+Redis as unavailable promptly while services can reconnect after recovery.
+
+### S3-compatible storage boundary
+
+The local S3 endpoint is Moto, included in the shared ETL image. Its health
+check performs a real `ListBuckets` S3 API call with the configured local
+credentials; bucket seeding remains a separate one-shot init job. Orders
+exports use a stable object key derived from the outbox event ID, a
+10-second request deadline, and bounded standard SDK retries. The ETL boto3
+client uses path-style addressing, a 3-second connect timeout, a 10-second
+read timeout, and at most three attempts. These bounds make failed I/O
+visible to the existing retry logic rather than leaving exporter work waiting
+indefinitely.
+
+Moto stores all objects in memory. Recreating its container loses raw and
+curated data, and its local placeholder credentials are not an access-control
+boundary. The endpoint is loopback-published for host access and is intended
+only for development/tests; it does not emulate every AWS S3 behavior. The
+Postgres outbox remains the source for retrying raw exports, but curated
+Parquet must be regenerated after a Moto restart.
+
+### NATS delivery boundary
+
+The local NATS server enables JetStream with a named Docker volume for its
+file-backed stream data. The orders service ensures the `ORDERS` stream exists
+with a 30-day age limit, a 1 GiB byte limit, one replica, and `discard: new`.
+When capacity is reached, JetStream rejects new messages rather than evicting
+retained events; the PostgreSQL outbox then retries and eventually alerts if
+the broker remains unavailable. The outbox marks an event published only
+after receiving JetStream's publish acknowledgement, using the event ID for
+deduplication within a 24-hour window.
+
+This is durable broker acceptance on one local server, not high availability
+or a guarantee that a consumer completed business work. There is currently no
+application NATS consumer. A real consumer needs a durable explicit-ack
+consumer, idempotent side effects, and redelivery/recovery tests. The named
+volume survives container recreation but is not a backup or host-failure
+strategy.
 
 The configured host ports are:
+
+Every published host port binds to `127.0.0.1`; the local development
+services are not exposed to other machines on the host's network. Containers
+continue to reach each other over the private Compose network. To make a
+service reachable from another machine, deliberately change its host binding
+and review its authentication and network exposure first.
 
 |              Host port | Service                                                                         |
 | ---------------------: | ------------------------------------------------------------------------------- |
@@ -198,12 +384,14 @@ command removes named volumes.
 
 The live check passed on 2026-09-29 after rebuilding all six HTTP service
 images one at a time and recreating the full E2E Compose project. It exercised
-one successful and one inventory-compensation order. The current journey also
+one successful and one inventory-compensation order. That journey also
 verified the outbox trace carrier and NATS child trace header, with matching
 trace IDs in orders, payments, and inventory logs. The migration applied,
-all configured health-checked application, ETL, and monitoring services were
-healthy, and the one-shot S3 init exited `0`. Temporal and the OTel collector
-were running; neither has a Compose health check. The 2026-09-30 bounded delivery drill exercised each outbox stage's terminal
+all health-checked services in that configuration were healthy, and the
+one-shot S3 init exited `0`. At that time, Temporal and the OTel collector
+were running without Compose health checks; current coverage is listed below
+and has not all been applied to the running containers. The 2026-09-30 bounded
+delivery drill exercised each outbox stage's terminal
 transition at its configured attempt limit, verified its alert reached
 `firing`, then applied the documented one-stage requeue and observed recovery
 and alert clearing. The attempt counts were injected as database state; this
@@ -224,8 +412,8 @@ outages, drain an active Temporal task, or stress the 500-row retention batch.
 
 - **Running** means the container's main process is running. It does not prove
   the service can answer useful requests.
-- **Healthy** means its configured Docker health check passed. Not every
-  service in this Compose file has a health check.
+- **Healthy** means its configured Docker health check passed. Tempo has no
+  Compose health check; see the coverage table for each probe's scope.
 - **Exited (0)** is a successful completion. `s3-mock-init` is intentionally a
   one-shot job: it creates buckets and seed data, then exits.
 - **Exited with a non-zero code** means the process failed, or was interrupted.
@@ -236,16 +424,21 @@ outages, drain an active Temporal task, or stress the 500-row retention batch.
 
 Current health-check coverage in Compose:
 
-| Services                                                                | What the configured check establishes                                                                                                |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `postgres`, `redis`, `nats`                                             | The respective database, cache, or broker check responds.                                                                            |
-| `users`, `orders`, `payments`, `inventory`                              | The service's `/ready` endpoint succeeds.                                                                                            |
-| `api-gateway`                                                           | Its `/ready` endpoint succeeds, including its checked dependencies.                                                                  |
-| `auth-service`                                                          | Its `/health` endpoint returns successfully; this is not the same as a Compose `/ready` check.                                       |
-| `dagster`                                                               | Its container accepts a TCP connection on port 3000. This is a port check, not a full ETL materialization test.                      |
-| `s3-mock`                                                               | A TCP listener check confirms the local Moto endpoint accepts connections; this does not validate S3 credentials or bucket contents. |
-| `temporal`, `nginx`, `prometheus`, `grafana`, `otel-collector`, `tempo` | No Docker health check is configured in this Compose file.                                                                           |
-| `s3-mock-init`                                                          | Compose waits for successful process completion, not a long-running health state.                                                    |
+| Services                                   | What the configured check establishes                                                                                       |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `postgres`, `redis`, `nats`                | The respective database, cache, or broker check responds.                                                                   |
+| `users`, `orders`, `payments`, `inventory` | The service's `/ready` endpoint succeeds.                                                                                   |
+| `api-gateway`                              | Its `/ready` endpoint succeeds, including its checked dependencies.                                                         |
+| `auth-service`                             | Its `/health` endpoint returns successfully; this is not the same as a Compose `/ready` check.                              |
+| `dagster`                                  | Its `/server_info` endpoint responds with a Dagster webserver version; this does not prove an ETL materialization succeeds. |
+| `s3-mock`                                  | A `ListBuckets` S3 API request succeeds; bucket presence and seed contents are established by the init job, not this check. |
+| `temporal`                                 | Temporal's gRPC cluster-health command confirms the workflow service is serving.                                            |
+| `otel-collector`                           | The collector's own health-check extension responds; Prometheus separately scrapes collector telemetry.                     |
+| `prometheus`                               | Prometheus serves `/-/healthy`; target health and alert state remain separate signals.                                      |
+| `grafana`                                  | Grafana's `/api/health` endpoint responds; this does not verify datasource queries or dashboards.                           |
+| `nginx`                                    | Its `/health` proxy path receives a successful response from the API gateway.                                               |
+| `tempo`                                    | No Docker health check is configured; the image has no shell-based probe utility.                                           |
+| `s3-mock-init`                             | Compose waits for successful process completion, not a long-running health state.                                           |
 
 The orders service's `/ready` endpoint checks PostgreSQL. Its `/health`
 endpoint also reports NATS and Temporal, but neither endpoint exposes the
@@ -260,18 +453,21 @@ Stop and remove containers while keeping named volumes:
 docker compose -f infra/docker-compose.dev.yml down --remove-orphans
 ```
 
-The Postgres and Dagster named volumes persist across this command. Moto stores
-objects in its container filesystem, so recreating `s3-mock` loses its data;
-the init job seeds it again when the stack starts.
+The Postgres, NATS JetStream, Prometheus, Grafana, Dagster, and Tempo named
+volumes persist across this command. Moto stores objects only in memory, so
+recreating `s3-mock` loses its data; rerun `s3-mock-init` after Moto starts to
+recreate buckets and sample data. Redis is also ephemeral and has no data
+volume or persistence configured.
 
 `make reset` and `docker compose down -v` remove named volumes and therefore
-delete persisted local database and Dagster state. Use those only when you
-intentionally want a clean local reset.
+delete persisted local Postgres, NATS, Prometheus, Grafana, Dagster, and Tempo
+state. Use those only when you intentionally want a clean local reset.
 
 ## Monitoring boundaries
 
 - Prometheus scrapes `/metrics` from all six HTTP services: `api-gateway`,
-  `users`, `auth-service`, `orders`, `payments`, and `inventory`.
+  `users`, `auth-service`, `orders`, `payments`, and `inventory`. It also
+  scrapes collector and Tempo internal metrics.
 - The orders metrics endpoint reports event backlog, oldest backlog age, and
   attempted events for NATS publication, Temporal dispatch, and raw export.
   Separate gauges and alert rules cover terminal NATS, workflow-start, and

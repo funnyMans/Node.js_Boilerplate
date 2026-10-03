@@ -6,6 +6,7 @@ import { trace } from '@opentelemetry/api';
 import { publishEvent } from '@nodejs-boilerplate/common-infra';
 import type { OrderCreatedEvent } from '@app/contracts';
 import type { PrismaClient } from '../../../generated/prisma/client';
+import { ensureOrderEventsStream } from './nats-stream';
 
 const BATCH_SIZE = 50;
 const LOCK_DURATION_MS = 30_000;
@@ -27,6 +28,7 @@ export class OutboxPublisher {
   private running = false;
   private loopPromise: Promise<void> | undefined;
   private connection: NatsConnection | undefined;
+  private streamReadyConnection: NatsConnection | undefined;
   private nextRetentionSweepAt = 0;
 
   constructor(
@@ -54,7 +56,11 @@ export class OutboxPublisher {
   }
 
   isConnected(): boolean {
-    return this.connection !== undefined && !this.connection.isClosed();
+    return (
+      this.connection !== undefined &&
+      !this.connection.isClosed() &&
+      this.streamReadyConnection === this.connection
+    );
   }
 
   private async run(): Promise<void> {
@@ -63,6 +69,13 @@ export class OutboxPublisher {
         await this.pruneCompletedEventsIfDue();
         if (!this.isConnected()) this.connection = await this.connect();
         if (!this.running) break;
+        const connection = this.connection;
+        if (!connection) throw new Error('NATS connection is unavailable');
+        if (connection !== this.streamReadyConnection) {
+          const manager = await connection.jetstreamManager();
+          await ensureOrderEventsStream(manager.streams);
+          this.streamReadyConnection = connection;
+        }
         const published = await this.publishBatch();
         if (published === 0) await wait(this.pollIntervalMs);
       } catch (error) {
@@ -76,6 +89,7 @@ export class OutboxPublisher {
   private async publishBatch(): Promise<number> {
     const connection = this.connection;
     if (!connection) throw new Error('Outbox publisher has no NATS connection');
+    const jetstream = connection.jetstream();
 
     const events = await this.prisma.$transaction(async (transaction) => {
       await transaction.$executeRaw`
@@ -128,11 +142,16 @@ export class OutboxPublisher {
               },
               'publishing order event to NATS'
             );
-            await publishEvent(connection, event.subject, event.payload, outgoingTraceContext);
+            await publishEvent(
+              jetstream,
+              event.subject,
+              event.payload,
+              event.payload.eventId,
+              outgoingTraceContext
+            );
           }
         );
       }
-      await connection.flush();
 
       for (const event of events) {
         await this.prisma.$executeRaw`
