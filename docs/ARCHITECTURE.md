@@ -1,10 +1,12 @@
-# Architecture: current learning system and design boundaries
+# Architecture: current system and design boundaries
 
-This repository is a learning lab for understanding distributed application
-design and operation. It is not a production-ready product, and its purpose is
-not to claim that microservices are the right default for most applications.
-The separate services make boundaries, network calls, data ownership,
-asynchronous work, and operational costs concrete enough to study.
+This document describes the local system that currently exists and separates
+it from the longer-term project direction in
+[`PROJECT_IDEOLOGY.md`](./PROJECT_IDEOLOGY.md). The repository is evolving
+toward a production-minded, reusable backend foundation, but the current
+implementation is not a production-ready product or a validated deployment.
+Its separate services make boundaries, network calls, data ownership,
+asynchronous work, and operational costs concrete enough to evaluate.
 
 This note distinguishes what runs in the local system from optional design
 exercises. A technology appearing in a dependency, manifest, or diagram does

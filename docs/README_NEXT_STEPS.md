@@ -1,24 +1,26 @@
-# Roadmap: operating the services as one system
+# Roadmap: strengthening the current foundation
 
-This is a learning roadmap for understanding the system already in the
-repository, not a feature roadmap or a plan to deploy a product. Do not add
-services just to make the stack larger. Each phase should leave behind a
-readable explanation, repeatable evidence, and a clear statement of what has
-and has not been verified.
+This roadmap covers the existing implementation; it is not a complete product
+backlog or a deployment plan. Read it alongside
+[`PROJECT_IDEOLOGY.md`](./PROJECT_IDEOLOGY.md), which defines the longer-term
+direction and the questions that still need evidence. Do not add services just
+to make the stack larger. Each phase should leave behind a readable
+explanation, repeatable evidence, and a clear statement of what has and has
+not been verified.
 
-## Current focus — improve the application we already have
+## Current focus — improve the existing baseline
 
-Keep new business features, services, and deployment out of scope while we
-learn from the existing application. Work through the application-quality
-roadmap below: prefer small changes that improve type safety, clarify
-boundaries, strengthen tests, or make everyday development more predictable.
-Continue using the order journey and local observability as the system-level
-regression check when a change affects them.
+Work through the application-quality roadmap below: prefer changes that
+improve type safety, clarify boundaries, strengthen tests, or make everyday
+development more predictable. Continue using the order journey and local
+observability as the system-level regression check when a change affects
+them. New product capabilities and deployment choices should follow explicit
+domain and operational decisions rather than assumptions.
 
 The operational failure drills in Phase 5 remain useful follow-up work, but
 they do not block this application-quality track. Kubernetes, GraphQL/Apollo
-Federation, RabbitMQ, AI agents, and deployment remain possible future
-learning topics—not current requirements or commitments.
+Federation, RabbitMQ, AI agents, and deployment are not requirements of this
+roadmap; revisit them only when a defined need justifies their trade-offs.
 
 ## Application code and developer-experience roadmap
 
@@ -451,7 +453,7 @@ tool, not a deployment pipeline.
 ## Branch workflow and merge policy
 
 The repository uses `main` as its stable reference branch, with protected
-`stage` and `dev` branches for integration and ongoing learning work. Normal
+`stage` and `dev` branches for integration and ongoing development. Normal
 feature/fix branches target `dev`; promotion pull requests advance `dev` to
 `stage`, then `stage` to `main`. Ordinary change PRs use squash; promotion and
 branch synchronization PRs use merge commits to preserve shared ancestry and
@@ -464,16 +466,18 @@ not required. See
 [`CONTRIBUTING.md`](../CONTRIBUTING.md) for the branch flow, PR requirements,
 and local validation commands.
 
-## Deployment — intentionally out of scope
+## Deployment — not yet defined
 
-There is no deployment milestone. Revisit deployment only if it becomes a
-specific learning objective; doing so is not required to complete this
-learning lab. Kubernetes, GraphQL/Apollo Federation, RabbitMQ, and AI agents
-are also possible study topics rather than scheduled work.
+The current repository has no supported deployment path or deployment
+milestone. The project's production-minded direction does not by itself define
+an environment, reliability target, or release process. Establish those
+requirements before treating deployment as implementation work. Kubernetes,
+GraphQL/Apollo Federation, RabbitMQ, and AI agents are not scheduled
+commitments.
 
 ## Working rule
 
-For each change, explain the learning objective, relevant scenario, design
+For each change, explain the project objective, relevant scenario, design
 choice and simpler alternative, failure behavior, and verification evidence.
 Update the relevant guide and diagrams, and state what remains unverified.
 Prefer a small targeted check before starting the full stack; use a no-build

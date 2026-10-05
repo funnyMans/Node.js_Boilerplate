@@ -1,37 +1,49 @@
-# Node.js Microservices Learning Lab
+# Node.js Backend Foundation
 
-This repository is a hands-on learning lab for understanding how a
-microservices system is designed, built, run, tested, and observed. Its goal is
-to help learners reason about service boundaries, data ownership, messaging,
-workflows, failure handling, and operational signals—not to provide a
-production-ready product or encourage microservices for every application.
+This repository is evolving toward a production-minded, reusable foundation
+for backend systems that connect client applications to business services and
+external providers. Its architecture vision uses logistics and truck
+brokerage as a concrete reference domain while keeping the engineering
+principles broadly reusable. See the
+[project ideology](./docs/PROJECT_IDEOLOGY.md) for its goals, priorities,
+trade-offs, and unresolved questions.
 
-The running example is a local order-processing system built from separate
-Node.js services. It deliberately brings together tools such as PostgreSQL,
-Redis, NATS, Temporal, Dagster, Prometheus, Grafana, OpenTelemetry, and Tempo
-so their roles and trade-offs can be studied as one connected system.
+The current implementation is a local order-processing system built from
+separate Node.js services. It brings together PostgreSQL, Redis, NATS,
+Temporal, Dagster, Prometheus, Grafana, OpenTelemetry, and Tempo to make
+service boundaries, data ownership, messaging, workflows, failure handling,
+and operational signals concrete.
 
-This is not a deployable production template. The local stack uses development
+The vision is aspirational: this repository is not yet a production-ready
+product or a supported deployment template. The local stack uses development
 adapters and mocks, and its Kubernetes manifests are study material rather
-than a supported deployment. Deployment is not a current project goal.
+than a validated deployment path. The architecture guide documents what is
+currently implemented and its known boundaries; deployment readiness and
+scale claims require separate evidence.
 
 This project is available under the [MIT License](./LICENSE).
 
-## Learning path
+## Start here
 
-Read the guides in this order; each one answers a different kind of question:
+Read the vision first, then use the implementation guides to distinguish
+current behavior from future direction:
 
-1. [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md): what the system is for,
-   what is actually implemented, and how to evaluate future design choices.
-2. [`docs/diagrams.md`](./docs/diagrams.md): how the services and data flows
+1. [`docs/PROJECT_IDEOLOGY.md`](./docs/PROJECT_IDEOLOGY.md): engineering
+   priorities, architecture stance, and trade-offs.
+2. [`docs/trucking/README.md`](./docs/trucking/README.md): the business
+   vision, actors and authority, proposed workflow, and implementation
+   questions for the trucking reference.
+3. [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md): what the local system
+   actually implements and where its boundaries are.
+4. [`docs/diagrams.md`](./docs/diagrams.md): how the services and data flows
    connect, including the synchronous order request and its asynchronous work.
-3. [`docs/IMPLEMENTATION_WALKTHROUGH.md`](./docs/IMPLEMENTATION_WALKTHROUGH.md):
+5. [`docs/IMPLEMENTATION_WALKTHROUGH.md`](./docs/IMPLEMENTATION_WALKTHROUGH.md):
    what happens step by step and where the important boundaries are.
-4. [`infra/README.md`](./infra/README.md): how to build, start, inspect, and
+6. [`infra/README.md`](./infra/README.md): how to build, start, inspect, and
    stop the local stack, and what its health signals do and do not prove.
-5. [`docs/SERVICE_CONTRACT.md`](./docs/SERVICE_CONTRACT.md): the common service
+7. [`docs/SERVICE_CONTRACT.md`](./docs/SERVICE_CONTRACT.md): the common service
    endpoints, trace context, readiness, and verification limits.
-6. Follow a specific tool or scenario in
+8. Follow a specific tool or scenario in
    [`docs/orders_workflow.md`](./docs/orders_workflow.md),
    [`docs/temporal.md`](./docs/temporal.md), [`docs/etl.md`](./docs/etl.md),
    and [`docs/README_NEXT_STEPS.md`](./docs/README_NEXT_STEPS.md).
@@ -157,20 +169,19 @@ Images are built locally by the Makefile targets. GitHub Actions validates
 builds, lint, tests, Compose configuration, service contracts, and the order
 journey on pull requests targeting `stage` or `main`, and on pushes to those
 branches. Automatic CI for pushes and pull requests targeting `dev` is
-temporarily paused while the learning lab is being reorganized; branch
+temporarily paused while project documentation and architecture are being
+reorganized; branch
 protections still require pull requests and preserve history. The workflow can
-also be dispatched manually. CI is a learning and regression tool, not a
-deployment pipeline.
+also be dispatched manually. CI validates and regression-tests the code; it is
+not a deployment pipeline.
 
 What's next
 -----------
 
-- Pause new services and product functionality while we study and document the
-  configured system end to end.
-- Make the major scenarios, failure boundaries, logs, traces, metrics, and
-  recovery procedures understandable before starting new infrastructure
-  experiments.
-- Treat Kubernetes, GraphQL/Apollo Federation, RabbitMQ, and AI agents as
-  possible future learning topics—not approved additions or commitments.
-- Keep deployment out of scope until there is a specific learning reason to
-  revisit it.
+- Turn the vision and open questions in
+  [`docs/PROJECT_IDEOLOGY.md`](./docs/PROJECT_IDEOLOGY.md) into explicit,
+  evidence-backed decisions before expanding the reference implementation.
+- Keep the implementation guides accurate about what is configured, tested,
+  and not yet verified; do not infer production readiness from local examples.
+- Add architecture or infrastructure only when it addresses an identified
+  domain need or measurable operating goal, and document its trade-offs.
