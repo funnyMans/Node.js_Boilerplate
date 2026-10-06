@@ -1,11 +1,16 @@
 # Actors and authority
 
+This is an illustrative responsibility model, not an org chart that every
+carrier should adopt. The named roles describe ownership and decision
+boundaries; they do not imply that every role needs a separate application
+account or that the software should automate every responsibility.
+
 ## Reporting and coordination
 
 ```mermaid
 flowchart TD
     Exec["Transportation top manager / C-level"]
-    Chief["Homelander<br/>Chief supervisor + LA supervisor"]
+    Chief["Chief supervisor<br/>also LA-area supervisor"]
     West["West supervisor"]
     Central["Central supervisor"]
     East["East supervisor"]
@@ -13,8 +18,10 @@ flowchart TD
     BrokerWest["West-area broker(s)"]
     BrokerCentral["Central-area broker"]
     BrokerEast["East-area broker"]
+    OuterBroker["Dedicated outer-fleet broker"]
     FleetDispatch["Shared fleet dispatchers"]
     ContractDispatch["Dedicated contract-capacity dispatcher(s)"]
+    OuterSupervisor["Possible future<br/>outer-fleet supervisor"]
     Driver["In-house drivers"]
     OwnerOp["Lease-agreement / owner-operator drivers"]
     Shipper["Shipper / customer contact"]
@@ -28,47 +35,64 @@ flowchart TD
     West --> BrokerWest
     Central --> BrokerCentral
     East --> BrokerEast
-    FleetDispatch --> Driver
+    OuterBroker -. "cross-area sourcing" .-> West
+    OuterBroker -. "cross-area sourcing" .-> Central
+    OuterBroker -. "cross-area sourcing" .-> East
+    FleetDispatch -. "operational coordination" .-> Driver
     ContractDispatch -. "coordination under agreement" .-> OwnerOp
-    Shipper --> BrokerWest
-    BrokerWest --> Carrier
+    BrokerWest -. "customer communication" .-> Shipper
+    BrokerWest -. "spot sourcing" .-> Carrier
+    Chief -. "if created at scale" .-> OuterSupervisor
+    OuterSupervisor -. "contract-capacity oversight" .-> ContractDispatch
 ```
 
-Arrows in the hierarchy show reporting/oversight. The customer and carrier
-examples are illustrative. Fleet dispatchers are shared across the
-supervisors, not owned by one area. For a specific load, the departure-area
-supervisor directs operational decisions. General dispatcher issues go to
-Homelander. A local incident-area supervisor coordinates help; they take
-operational lead when delegated under the absence rules below.
+Solid arrows show illustrative reporting/oversight; dotted arrows show
+coordination, not authority. Customers and spot carriers are external
+counterparties, not part of the reporting hierarchy. Fleet dispatchers are
+shared across the supervisors, not owned by one area. For a specific load,
+the departure-area supervisor directs operational decisions. General
+dispatcher issues go to the chief supervisor. A local incident-area
+supervisor coordinates help and takes operational lead only when delegated
+under the coverage rules below.
 
 ## Responsibilities
 
-| Actor                              | Owns                                                                                | May do                                                                                                                      | Does not own by default                                             |
-| ---------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Transportation executive / C-level | Department-level escalation and cross-department decisions                          | Receive critical issues through Homelander; set company policy                                                              | Routine load assignment or unrestricted operational data access     |
-| Homelander (chief + LA supervisor) | Supervisory coordination; LA-departure accountability                               | Direct area supervisors; handle general issues; make LA-departure decisions; escalate critical matters                      | Every non-LA load's operational accountability                      |
-| Area supervisor                    | Operational outcome for loads departing their area; oversight of that area's broker | Confirm/reject assignments; coordinate destination and incident-area support; escalate through Homelander                   | Replacing driver or dispatcher execution duties                     |
-| Broker                             | Commercial load quality, capacity sourcing, and customer communication              | Validate instructions; source feasible capacity; communicate verified updates                                               | In-transit truck management or final operational assignment         |
-| Fleet dispatcher                   | Day-to-day coordination for assigned in-house driver/truck groups                   | Propose load matches; monitor progress; respond to readiness/status issues; raise load issues to its accountable supervisor | Final assignment approval or changing commercial terms              |
-| Contract-capacity dispatcher       | Coordination and status follow-up for lease-agreement/owner-operator capacity only  | Track agreed milestones and exceptions; route company-side decisions to the accountable supervisor                          | Dispatching in-house drivers or managing contractor-owned equipment |
-| In-house driver                    | Safe execution and factual reporting                                                | Perform assigned work; take agreed rest; report availability, defects, delays, and exceptions                               | Changing load terms or source records                               |
-| Owner-operator / contracted driver | Contracted execution and required updates                                           | Accept/decline work as allowed by agreement; report milestones and exceptions                                               | Being treated as an employee or company-fleet equipment owner       |
-| Shipper / customer contact         | Its own freight request and instructions                                            | Submit requests; receive permitted status; request changes                                                                  | Other customers' work or internal allocation decisions              |
-| Outside carrier                    | Its accepted transportation work                                                    | Accept/decline tender; report agreed execution milestones                                                                   | Company fleet or unrelated carrier/customer information             |
+| Actor                              | Owns                                                                                                                                         | May do                                                                                                                                                                                                   | Does not own by default                                                                         |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Transportation executive / C-level | Department-level escalation and cross-department decisions                                                                                   | Receive critical issues through the chief supervisor; set company policy                                                                                                                                 | Routine load assignment or unrestricted operational data access                                 |
+| Chief supervisor / LA supervisor   | Supervisory coordination; LA-departure accountability                                                                                        | Direct area supervisors; handle general issues; make LA-departure decisions; escalate critical matters                                                                                                   | Every non-LA load's operational accountability                                                  |
+| Area supervisor                    | Operational outcome for loads departing their area; oversight of that area's broker                                                          | Confirm/reject assignments; coordinate destination and incident-area support; escalate through the chief supervisor                                                                                      | Replacing driver or dispatcher execution duties                                                 |
+| Broker                             | Commercial load quality, capacity sourcing, and customer communication                                                                       | Validate instructions; source feasible capacity; set the booked load's managed-carrier offer; coordinate customer-requested changes and communicate verified updates                                     | In-transit truck management or final operational assignment                                     |
+| Dedicated outer-fleet broker       | Finding outer-carrier capacity for loads unlikely to receive suitable in-house priority; keeping managed outer capacity productively engaged | Proactively work low-priority/unmatched loads across areas; negotiate with spot carriers by external channels; issue managed-carrier emergency-rate updates; assign under delegated supervisor authority | Changing the in-house-first priority or exposing customer/load revenue without authorization    |
+| Fleet dispatcher                   | Day-to-day coordination for assigned in-house driver/truck groups                                                                            | Propose load matches; monitor progress; respond to readiness/status issues; raise load issues to its accountable supervisor                                                                              | Final assignment approval or changing commercial terms                                          |
+| Contract-capacity dispatcher       | Coordination and status follow-up for managed outer-fleet capacity                                                                           | Track agreed milestones and exceptions; rank/propose only loads at the current confirmed offer that the managed carrier is ready to haul; route company-side decisions to its supervisor                 | Dispatching in-house drivers, final assignment approval, or managing contractor-owned equipment |
+| Future outer-fleet supervisor      | Contract-capacity program oversight if the outer fleet grows enough to justify the role                                                      | Coordinate dedicated contract dispatch, carrier readiness, and cross-area capacity practices under company policy                                                                                        | Replacing the load's accountable departure-area supervisor                                      |
+| In-house driver                    | Safe execution and factual reporting                                                                                                         | Perform assigned work; take agreed rest; report availability, defects, delays, and exceptions                                                                                                            | Changing load terms or source records                                                           |
+| Owner-operator / contracted driver | Contracted execution and required updates                                                                                                    | Accept/decline work as allowed by agreement; report milestones and exceptions                                                                                                                            | Being treated as an employee or company-fleet equipment owner                                   |
+| Shipper / customer contact         | Its own freight request and instructions                                                                                                     | Submit requests; receive permitted status; request changes                                                                                                                                               | Other customers' work or internal allocation decisions                                          |
+| Outside carrier                    | Its accepted transportation work                                                                                                             | Accept/decline tender; report agreed execution milestones                                                                                                                                                | Company fleet or unrelated carrier/customer information                                         |
 
 ## Accountability rules
 
 - The departure-area supervisor remains accountable for that load from
   departure planning through operational resolution unless authority is
   explicitly delegated under the absence/incident coverage rules below.
-- Homelander is the accountable supervisor for LA departures. Other area
+- The chief supervisor is accountable for LA departures. Other area
   supervisors retain accountability for their departures and report through
-  Homelander.
+  the chief supervisor.
 - The broker owns customer-facing commercial communication; dispatchers and
   supervisors provide verified operational facts.
+- The dedicated outer-fleet broker supplements, but does not restrict, other
+  brokers' ability to source outside capacity. The role focuses on low-priority
+  loads and outer-capacity coverage across areas. Area brokers retain their
+  existing customer and sourcing responsibilities.
+- No dedicated outer-fleet supervisor is assumed initially. Until that role
+  is justified by scale, load accountability stays with the departure-area
+  supervisor and contractor coordination stays with the dedicated
+  contract-capacity dispatcher.
 - In-house fleet dispatchers are shared across supervisors. Load-specific
   issues go to that load's accountable supervisor; general/workforce issues
-  go to Homelander.
+  go to the chief supervisor.
 - Contractor coordination follows the applicable agreement and is not an
   employee reporting relationship. Contractors own their equipment and its
   maintenance.
@@ -93,13 +117,13 @@ flowchart TD
     BrokerLeave["Planned broker leave"] --> Prebook["Prebook feasible known work;<br/>delegate customer support"]
     Prebook --> BrokerChain["Temporary broker follows<br/>the coverage chain"]
 
-    Homelander["Homelander"] -->|covers| West["West supervisor"]
+    Chief["Chief / LA supervisor"] -->|covers| West["West supervisor"]
     West -->|covers| Central["Central supervisor"]
     Central -->|covers| East["East supervisor"]
-    East -->|covers| Homelander
+    East -->|covers| Chief
     Active["Active load / incident<br/>needs supervisory cover"] --> IncidentArea["Pickup or incident-area<br/>supervisor takes the lead"]
     IncidentArea -->|unavailable| Chain["Continue around supervisor chain"]
-    Chain -->|Homelander unavailable| Executive["Transportation C-level"]
+    Chain -->|chief unavailable| Executive["Transportation C-level"]
 ```
 
 Coverage rules by role:
@@ -122,8 +146,8 @@ Coverage rules by role:
   accept only loads in their own area. Temporarily suspend the area-presence
   percentage guardrail. Do not continue new bookings under ordinary
   capacity-sourcing assumptions.
-- **Area supervisor:** planned leave rotates **Homelander → West → Central
-  → East → Homelander**. If multiple supervisors in the chain are away,
+- **Area supervisor:** planned leave rotates **Chief/LA → West → Central
+  → East → Chief/LA**. If multiple supervisors in the chain are away,
   available supervisors absorb additional areas; if only one remains while
   three are away, transportation C-level helps keep operations functioning.
   For an active load, if the absence duration is known and does not extend
