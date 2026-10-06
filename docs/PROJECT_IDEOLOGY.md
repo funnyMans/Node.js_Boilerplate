@@ -22,6 +22,12 @@ implement a complete brokerage product or prove any particular production
 scale, availability, security, or recovery target. Keep intended capabilities,
 implemented behavior, and verified behavior clearly distinguished.
 
+The trucking discussions are a reference domain and a way to learn from
+realistic constraints; they are not a commitment to build every capability
+described there. A business rule belongs in the product only when a selected
+user workflow needs it. Prefer one complete, useful vertical slice over a
+partially implemented transportation suite.
+
 ## What we are optimizing for
 
 When priorities conflict, start with this order and make exceptions explicit:
@@ -216,10 +222,18 @@ prove the behavior, performance, security, or availability of a real provider.
 ## Reference domain: logistics and truck brokerage
 
 Use US trucking and brokerage as a concrete example for discussing
-responsibility, permissions, decisions, and work handoffs. The current
-business goal is a shared working platform, not a complete transportation
-suite. Analytics, forecasting, data reuse, CRM/TMS/ERP boundaries, and the
-choice between one or several role-specific applications are deferred.
+responsibility, permissions, decisions, and work handoffs. The reference
+model may describe a broad set of company operations; the candidate product
+is much narrower: coordinate a transportation commitment through its
+assignment, execution updates, exception handoffs, and completion. That
+workflow overlaps with parts of a TMS, but it is not a mandate to build a
+full TMS or to automate every decision in the company.
+
+Booking and negotiating customer/spot-carrier rates, dispatch optimization,
+award-based allocation, workforce scheduling, HOS calculation, billing and
+settlement, maintenance, and broad customer/partner portals are not implied
+by the reference model. Select any of them only when a concrete product need
+and implementation slice justify it.
 
 The first concern is a clear operating loop: broker handles commercial
 sourcing and customer communication; dispatchers propose feasible capacity;

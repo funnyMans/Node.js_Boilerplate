@@ -1,44 +1,47 @@
-# Questions for implementation
+# Decisions before implementation
 
-The business vision is ready to guide an initial design. These questions
-need answers when choosing and implementing the first real workflow; they do
-not block the current discussion.
+The reference operating loop is coherent enough to discuss end to end:
+commercial work becomes an operational commitment, a supervisor owns the
+capacity decision, dispatch coordinates execution, exceptions are escalated,
+and the broker communicates verified updates. The open questions below are
+not blockers to that model. They matter only if a product slice is selected.
 
-## Resolve for the first end-to-end workflow
+## Resolve for a first coordination slice
 
-1. What range between device-confirmed arrival and the paperwork's pickup or
-   delivery time counts as a small discrepancy versus an issue to investigate?
-2. What interval requires dispatcher follow-up if a supervisor does not
-   acknowledge an incident notification?
-3. Who may raise a safety/serviceability hold, who can stop work, and who can
-   clear a hold? A driver must be able to report unsafe conditions directly.
-4. For real operations, which legal entity and agreement applies to each
-   capacity type, and what contractor direction is permitted? Validate with
-   qualified counsel.
-5. What correction/audit mechanism should preserve post-POD load updates
-   without making the closed execution editable?
+1. **Boundary and source of truth:** Where does the product begin and end?
+   Which system owns the load, assignment, execution state, and customer
+   communication when other company systems are involved?
+2. **Authority and access:** Which people need accounts, what can each role
+   view or change, and who is accountable when the normal owner is
+   unavailable?
+3. **Exception handoff:** Which person records the initial facts, who must
+   acknowledge and decide, and how is an unacknowledged or cross-area issue
+   escalated? The exact response depends on the incident; this model defines
+   ownership, not a universal playbook.
+4. **Evidence and corrections:** Which signals establish operational
+   milestones, how are stale, missing, or conflicting updates handled, and
+   how can an authorized person correct a closed record without erasing its
+   history?
+5. **Safe eligibility:** Which authoritative source can confirm that the
+   driver, equipment, and load are eligible for the proposed movement? The
+   first slice should consume verified eligibility rather than inventing a
+   complete legal or HOS rules engine.
 
-## Decide only when the related workflow is in scope
+## Park until a specific feature needs them
 
-- Research the load-specific legal, safety, equipment, freight, route, and
-  driver-qualification requirements; make matching apply relevant checks and
-  exclude non-applicable ones.
-- Exact rules for when a long-term broker shortage begins and ends, and how
-  to prioritize homebound trips while new bookings are restricted.
-- How many trips to retain and how far ahead to shorten planning during a
-  prolonged broker/supervisor shortage.
-- Weekday/weekend dispatcher scheduling to meet the 7-on-duty target; this
-  remains a company staffing decision, not a dispatch-system rule.
-- Broker territory exceptions, the exact West two-thirds return trigger, and
-  when the return-focused broker stops sourcing.
-- Regional decision windows, contractor-quality notices/review, and
-  customer-specific cancellation terms.
-- The measurement basis/time window for the provisional 10%-50% area coverage
-  guardrail.
-- Detailed LTL, split-load, or partner-terminal workflows.
-- Any later choice of one application versus role-focused applications or
-  API access.
+- Brokerage booking, customer and spot-carrier negotiation, managed-carrier
+  contracts and compensation, carrier onboarding, and rate-change policy.
+- Automated matching, regional sourcing strategies, preassignment windows,
+  driver preferences, award rankings, scoring formulas, and reward amounts.
+- Staffing rosters, planned-absence coverage, area-presence targets, and
+  prolonged business-continuity policies.
+- Detailed safety and incident playbooks, load-specific legal requirements,
+  HOS calculations, equipment maintenance, complex freight, and
+  customer-specific cancellation rules.
+- Settlement, billing, analytics, forecasting, broad integrations, data
+  retention, and full CRM/ERP/TMS capabilities.
 
-Analytics, forecasts, scorecards, secondary data use, data retention,
-department systems, and broad integrations are not open requirements for the
-current work-platform vision.
+These topics remain in the workflow document as hypotheses about how the
+example company might operate. They are not commitments to build software
+for every described rule. Add implementation detail only when discovery
+shows that the chosen workflow depends on it.
