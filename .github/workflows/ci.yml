@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/app
+      DATABASE_URL: ******127.0.0.1:5432/app
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -56,7 +56,7 @@ jobs:
         run: pnpm test:unit
 
   compose-validation:
-    name: Validate Compose configurations
+    name: Validate development Compose configuration
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -66,44 +66,18 @@ jobs:
       - name: Validate development Compose configuration
         run: docker compose -f infra/docker-compose.dev.yml config --quiet
 
-      - name: Validate E2E Compose configuration
-        run: docker compose -f infra/docker-compose.dev.yml -f infra/docker-compose.e2e.yml config --quiet
-
-  etl-tests:
-    name: ETL unit tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: services/etl/requirements.txt
-
-      - name: Install ETL dependencies
-        working-directory: services/etl
-        run: python -m pip install -r requirements.txt
-
-      - name: Run ETL unit tests
-        working-directory: services/etl
-        run: python -m unittest discover -s tests -v
-
-  compose-integration:
-    name: Compose service contract and order journey
+  compose-contracts:
+    name: Build and probe retained TMS foundation
     needs:
       - validate-and-build
       - compose-validation
-      - etl-tests
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     env:
       POSTGRES_USER: ci
       POSTGRES_PASSWORD: ci
-      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/app
+      AUTH_ACCESS_TOKEN_SECRET: ci-access-token-secret-change-me-32
+      AUTH_REFRESH_TOKEN_SECRET: ci-refresh-token-secret-change-me-32
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -122,61 +96,19 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build users image
-        run: docker compose -f infra/docker-compose.dev.yml build users
+      - name: Build retained service images
+        run: docker compose -f infra/docker-compose.dev.yml build users auth-service api-gateway
 
-      - name: Build auth-service image
-        run: docker compose -f infra/docker-compose.dev.yml build auth-service
+      - name: Start the retained service stack
+        run: docker compose -f infra/docker-compose.dev.yml up -d --no-build --wait --wait-timeout 600 api-gateway
 
-      - name: Build orders image
-        run: docker compose -f infra/docker-compose.dev.yml build orders
-
-      - name: Build payments image
-        run: docker compose -f infra/docker-compose.dev.yml build payments
-
-      - name: Build inventory image
-        run: docker compose -f infra/docker-compose.dev.yml build inventory
-
-      - name: Build API gateway image
-        run: docker compose -f infra/docker-compose.dev.yml build api-gateway
-
-      - name: Build ETL image
-        run: docker compose -f infra/docker-compose.dev.yml build dagster
-
-      - name: Start integration dependencies and HTTP services
-        run: >-
-          docker compose
-          -f infra/docker-compose.dev.yml
-          -f infra/docker-compose.e2e.yml
-          up -d --no-build --wait --wait-timeout 600 api-gateway
-
-      - name: Run users integration tests
-        run: |
-          pnpm --filter 'users-service^...' build
-          pnpm --filter users-service exec prisma generate
-          pnpm test:integration
-
-      - name: Probe all service contracts
+      - name: Probe service health, tracing headers, and metrics
         run: pnpm docker:service-contract
-
-      - name: Seed the E2E S3 mock
-        run: pnpm docker:e2e-seed
-
-      - name: Run authenticated order journey
-        run: pnpm docker:order-journey
 
       - name: Collect Compose logs after failure
         if: failure()
-        run: >-
-          docker compose
-          -f infra/docker-compose.dev.yml
-          -f infra/docker-compose.e2e.yml
-          logs --no-color --tail=200
+        run: docker compose -f infra/docker-compose.dev.yml logs --no-color --tail=200
 
       - name: Stop integration stack
         if: always()
-        run: >-
-          docker compose
-          -f infra/docker-compose.dev.yml
-          -f infra/docker-compose.e2e.yml
-          down --remove-orphans
+        run: docker compose -f infra/docker-compose.dev.yml down --remove-orphans

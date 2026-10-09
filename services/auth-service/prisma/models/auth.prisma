@@ -1,17 +1,47 @@
 enum AuthRole {
-  user
-  admin
+  transportation_executive
+  chief_supervisor
+  area_supervisor
+  broker
+  outer_fleet_broker
+  fleet_dispatcher
+  contract_capacity_dispatcher
+  in_house_driver
+  contracted_driver
+  customer_contact
+  outside_carrier_contact
+  outer_fleet_supervisor
+}
+
+enum AuthArea {
+  company
+  la
+  west
+  central
+  east
 }
 
 model Credential {
-  id           String    @id @default(uuid())
-  userId       String    @unique
-  email        String    @unique
+  id           String                 @id @default(uuid())
+  userId       String                 @unique
+  email        String                 @unique
   passwordHash String
-  role         AuthRole  @default(user)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
   sessions     Session[]
+  roleGrants   CredentialRoleGrant[]
+}
+
+model CredentialRoleGrant {
+  id           String     @id @default(uuid())
+  credentialId String
+  role         AuthRole
+  area         AuthArea   @default(company)
+  createdAt    DateTime   @default(now())
+  credential   Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+  @@unique([credentialId, role, area])
+  @@index([credentialId])
 }
 
 model Session {
@@ -20,7 +50,7 @@ model Session {
   refreshTokenHash String     @unique
   credentialId     String
   expiresAt        DateTime
-  refreshExpiresAt  DateTime
+  refreshExpiresAt DateTime
   revokedAt        DateTime?
   createdAt        DateTime   @default(now())
   credential       Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)

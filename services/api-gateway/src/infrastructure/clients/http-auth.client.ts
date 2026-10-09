@@ -1,4 +1,5 @@
-import { authRoles } from '@app/contracts';
+import { authRoles, companyAreas } from '@app/contracts';
+import type { AuthRoleGrant } from '@app/contracts';
 import type {
   AuthClientPort,
   AuthenticatedSession,
@@ -40,7 +41,7 @@ export class HttpAuthClient implements AuthClientPort {
       return {
         valid: true,
         userId: payload.userId,
-        role: payload.role,
+        roleGrants: payload.roleGrants,
         expiresAt: payload.expiresAt,
       };
     } catch (error) {
@@ -58,9 +59,21 @@ function isAuthenticatedSession(value: unknown): value is AuthenticatedSession {
     session.valid === true &&
     typeof session.userId === 'string' &&
     session.userId.trim().length > 0 &&
-    typeof session.role === 'string' &&
-    authRoles.some((role) => role === session.role) &&
+    Array.isArray(session.roleGrants) &&
+    session.roleGrants.length > 0 &&
+    session.roleGrants.every(isAuthRoleGrant) &&
     typeof session.expiresAt === 'string' &&
     Number.isFinite(Date.parse(session.expiresAt))
+  );
+}
+
+function isAuthRoleGrant(value: unknown): value is AuthRoleGrant {
+  if (typeof value !== 'object' || value === null || !('role' in value)) return false;
+  return (
+    typeof value.role === 'string' &&
+    authRoles.some((role) => role === value.role) &&
+    (!('area' in value) ||
+      value.area === undefined ||
+      (typeof value.area === 'string' && companyAreas.some((area) => area === value.area)))
   );
 }

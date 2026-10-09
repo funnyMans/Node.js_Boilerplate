@@ -74,7 +74,7 @@ export async function runWithTraceSpan<T>(
 }
 
 export function initObservability(options?: { serviceName?: string; endpoint?: string }) {
-  const serviceName = options?.serviceName ?? process.env.SERVICE_NAME ?? 'nodejs-boilerplate';
+  const serviceName = options?.serviceName ?? process.env.SERVICE_NAME ?? 'tms-service';
   const endpoint =
     options?.endpoint ??
     process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??

@@ -1,5 +1,0 @@
-services:
-  payments:
-    environment:
-      - NODE_ENV=development
-      - PAYMENTS_FAKE_STRIPE=true

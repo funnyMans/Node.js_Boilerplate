@@ -3,24 +3,15 @@
   "globalEnv": ["DATABASE_URL"],
   "tasks": {
     "build": {
-      "dependsOn": ["^build", "^db:generate"],
+      "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
     "dev": {
-      "dependsOn": ["^build", "^db:generate"],
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     },
     "lint": {},
-    "test": {},
-    "db:generate": {
-      "cache": false
-    },
-    "db:migrate": {
-      "cache": false
-    },
-    "db:deploy": {
-      "cache": false
-    }
+    "test": {}
   }
 }

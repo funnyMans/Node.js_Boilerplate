@@ -22,17 +22,11 @@ describe('api gateway dependency health', () => {
   it('marks the gateway ready only when all critical dependencies are healthy', () => {
     const dependencies = {
       users: true,
-      orders: true,
       auth: true,
-      payments: true,
-      redis: 'ok' as const,
-      nats: 'ok' as const,
-      temporal: 'ok' as const,
     };
 
     expect(isGatewayReady(dependencies)).toBe(true);
-    expect(isGatewayReady({ ...dependencies, nats: 'down' })).toBe(false);
-    expect(isGatewayReady({ ...dependencies, orders: false })).toBe(false);
+    expect(isGatewayReady({ ...dependencies, auth: false })).toBe(false);
   });
 
   it('reports downstream readiness as false when the dependency is not ready', async () => {
@@ -40,6 +34,6 @@ describe('api gateway dependency health', () => {
       new Response(JSON.stringify({ ready: false }), { status: 200 })
     );
 
-    await expect(getHttpDependencyReadiness('http://payments')).resolves.toBe(false);
+    await expect(getHttpDependencyReadiness('http://auth')).resolves.toBe(false);
   });
 });

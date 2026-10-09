@@ -1,10 +1,20 @@
-# Reference load workflow
+# TMS operating workflow
 
-This document records a possible operating model, not required software
-behavior. The detailed sourcing, rate, matching, award, regional, and absence
-rules below are hypotheses for the example company; they must not be treated
-as a commitment to implement a full TMS. The lifecycle describes business
+This document describes the operating model we are designing for our
+50–100-truck US company across LA, West, Central, and East. It combines
+selected practices from real-world operating models; it is our coherent
+company design, not a claim that one carrier or law requires these exact
+choices. Verify regulatory and contractual requirements with authoritative
+sources before encoding them as rules.
+
+The **first implementation slice** begins with a load ready for operations
+and covers authorized assignment, execution, exception handoff, and
+completion. The rest of this document defines later capabilities and policy
+choices that may be implemented only after the relevant data, authority,
+constraints, and tests are defined. This lifecycle describes business
 handoffs, not a requirement for one service, database, or event per step.
+See the [first-slice charter](./MVP_START.md), [target architecture](./MVP_ARCHITECTURE.md),
+and [company role model](./RESPONSIBILITIES.md).
 
 ## The basic path
 
@@ -41,6 +51,29 @@ A dispatcher nomination does not reserve a load or truck; supervisor
 confirmation creates one authoritative assignment and closes competing
 nominations. If no dispatcher proposes eligible in-house capacity, the
 supervisor may assign or request a proposal.
+
+The assignment policy is intentionally human-authorized. Drivers can state
+their preferences and readiness; dispatchers contribute operational
+knowledge and propose/rank feasible candidates; the departure-area
+supervisor weighs those inputs against the company's benefit for the
+specific load and makes the decision. The company-benefit criteria are not a
+single global score: define the relevant priorities and constraints for the
+load before automating a recommendation.
+
+The automation progression is a later design path, not part of the first
+slice:
+
+1. Capture explicit capacity, driver, dispatcher, and company-priority data.
+2. Validate eligibility and assignment invariants; show feasible candidates
+   and the reasons they rank as they do.
+3. Let the supervisor approve or override a proposed assignment with a
+   recorded rationale. Approval must atomically stop the assigned truck
+   from appearing as available for competing assignments.
+4. Evaluate one-click approval and preassignment against operational
+   scenarios and measured outcomes.
+5. Consider automatic assignment only after objectives, constraints,
+   employee-priority treatment, overrides, and safeguards are explicit and
+   tested. An automated recommendation must not silently become authority.
 
 ## Core work concepts
 

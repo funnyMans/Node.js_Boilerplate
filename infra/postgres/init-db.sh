@@ -3,7 +3,7 @@ set -euo pipefail
 
 postgres_user="${POSTGRES_USER:-dev}"
 default_database="${POSTGRES_DB:-app}"
-databases="${POSTGRES_MULTIPLE_DATABASES:-auth,orders,payments,inventory}"
+databases="${POSTGRES_MULTIPLE_DATABASES:-users,auth}"
 
 IFS=',' read -r -a database_names <<< "$databases"
 for database in "${database_names[@]}"; do

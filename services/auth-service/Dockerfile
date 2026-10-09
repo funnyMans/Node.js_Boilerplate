@@ -5,14 +5,12 @@ ENV DATABASE_URL=postgresql://ci:ci@127.0.0.1:5432/app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json turbo.json ./
 COPY packages/common/package.json packages/common/package.json
-COPY packages/common-infra/package.json packages/common-infra/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY services/auth-service/package.json services/auth-service/package.json
 
 RUN corepack enable && pnpm install --frozen-lockfile
 
 COPY packages/common ./packages/common
-COPY packages/common-infra ./packages/common-infra
 COPY packages/contracts ./packages/contracts
 COPY services/auth-service ./services/auth-service
 

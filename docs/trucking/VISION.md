@@ -1,54 +1,61 @@
-# Reference vision and product boundary
+# TMS study vision and company model
 
 ## Purpose
 
-Use a realistic trucking operation to reason about how a backend can support
-clear ownership, authorized decisions, durable work handoffs, and recovery
-from partial failures. The project itself is a reusable backend foundation;
-this business model is a learning and design reference, not a commitment to
-build a company-wide application.
+Study how to design and build a realistic trucking TMS by modeling a
+company's work, responsibilities, decisions, and constraints in software.
+We define the company and own the model; there is no real customer whose
+requirements we are fulfilling. Use real-world practice and applicable law
+to inform the model, state assumptions, and revise them through research,
+scenario testing, and implementation. This is a learning system, not a
+production business product.
 
-The reference operation's central loop is intentionally simple to state:
-transportation work is accepted for service, suitable capacity is assigned,
-the driver or carrier reports progress, operational exceptions reach an
-accountable person, and completion is recorded. A broker communicates
-verified customer-facing updates while a supervisor retains operational
-accountability.
+The first product loop begins with transportation work already ready for
+operations: an accountable supervisor authorizes capacity, a driver or
+carrier reports progress, operational exceptions reach the responsible
+people, and completion is recorded. Commercial booking and full carrier
+sourcing are outside this first slice.
 
 ## Reference company
 
-Use a US trucking company with its own fleet and brokerage as the example:
-roughly 50–100 trucks, drivers, brokers, dispatchers, area supervisors, and
-transportation leadership. The numbers are illustrative, not product limits.
-The working geography is LA, West, Central, and East; LA is its own area.
+Use a US trucking company with its own fleet and brokerage. Model an initial
+fleet of approximately 50–100 trucks and the people needed to operate it:
+transportation leadership, brokers, area supervisors, shared fleet
+dispatchers, drivers, and appropriate contract-capacity roles. These are
+design inputs, not product limits.
 
-The example should include the people who participate in this loop. That
-does not mean combining every company department or every logistics
-responsibility into one product. The working geography is LA, West, Central,
-and East; LA is treated as the company's home area.
+The working geography has four areas: LA (the company's home area), West,
+Central, and East. Preserve area ownership and cross-area coordination in
+the model without assuming that every employee belongs to exactly one
+permanent unit. A chief supervisor also serves as LA-area supervisor; other
+area supervisors retain accountability for their own departures and report
+through the chief.
 
 This model is one plausible organization, not a universal industry standard.
 Real carrier, broker, worker, and customer relationships depend on actual
 contracts and law. Validate them with qualified professionals before
 operational use.
 
-## Candidate first product slice
+## First product slice
 
-If this domain is implemented, start with one end-to-end coordination slice:
+Implement one end-to-end coordination slice:
 
 - Begin with a transportation commitment that is ready for operations; it
-  need not include the full customer-booking or carrier-sourcing process.
-- Identify its accountable supervisor and record one authorized capacity
-  assignment.
+  does not include the full customer-booking or carrier-sourcing process.
+- Identify its accountable departure-area supervisor and record one
+  supervisor-authorized capacity assignment.
+- Allow drivers and dispatchers to express priorities as decision inputs;
+  preserve the supervisor's authority to weigh those preferences against
+  company benefit for the specific load.
 - Record essential progress and delivery evidence, with a clear route for an
   exception to reach the people responsible for acting on it.
 - Let the broker communicate verified, customer-relevant status without
   exposing internal execution details.
 - Complete the work with an auditable history and an explicit correction path.
 
-This is a candidate boundary for future discovery, not an approved
-implementation plan. First validate that real users need it and that the
-repository is the right place to build it.
+This is an internally selected learning/product boundary, not a claim of
+customer validation. See the [first-slice charter](./MVP_START.md) for its
+start conditions and acceptance scenarios.
 
 ## Outside that initial slice
 
@@ -58,14 +65,17 @@ requirements for the first product slice:
 - Full brokerage intake, customer/spot-carrier negotiation, or a load
   marketplace.
 - Automated matching, preassignment stages, award-based priority, and
-  performance scoring.
+  performance scoring in the first slice. Define their inputs and decision
+  policy first; evaluate recommendation/ranking before approval or automatic
+  assignment.
 - Workforce scheduling and absence planning; legal HOS calculations;
   equipment maintenance; billing, settlement, or insurance workflows.
 - Complete customer, carrier, CRM, ERP, or TMS functionality; broad
   integrations, analytics, forecasting, and data reuse.
-- A particular deployment topology, microservice split, user-interface
-  arrangement, or event broker.
+- Additional service splits beyond Load, Dispatch, and Execution; a specific
+  user-interface arrangement or event broker.
 
-The operating rules for these subjects are useful discussion material, not
-software requirements. Add a capability only when a specific workflow needs
-it and its owner, failure behavior, and value are understood.
+The operating rules for deferred subjects remain parts of the evolving TMS
+company model, not first-slice software requirements. Add a capability only
+when its workflow, owner, constraints, failure behavior, and value are
+understood.

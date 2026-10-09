@@ -1,12 +1,13 @@
-# Decisions before implementation
+# Decisions for the first implementation slice
 
-The reference operating loop is coherent enough to discuss end to end:
-commercial work becomes an operational commitment, a supervisor owns the
-capacity decision, dispatch coordinates execution, exceptions are escalated,
-and the broker communicates verified updates. The open questions below are
-not blockers to that model. They matter only if a product slice is selected.
+The first product slice is selected: start with a commitment already ready
+for operations, then coordinate authorized assignment, execution, exception
+handoff, and completion. These questions are gates only when the
+implementation depends on their answers; do not expand scope to settle
+unrelated details. See the [first-slice charter](./MVP_START.md) for the
+boundary and acceptance scenarios.
 
-## Resolve for a first coordination slice
+## Resolve when the first slice needs the answer
 
 1. **Boundary and source of truth:** Where does the product begin and end?
    Which system owns the load, assignment, execution state, and customer

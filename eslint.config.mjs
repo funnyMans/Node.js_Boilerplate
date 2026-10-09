@@ -23,8 +23,6 @@ export default [
       '**/*.tsbuildinfo',
       '**/generated/**',
       '**/.next/**',
-      'charts/**',
-      'k8s/**',
       'infra/**',
       'eslint.config.*',
     ],

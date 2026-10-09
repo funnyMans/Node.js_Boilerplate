@@ -1,4 +1,4 @@
-import type { AuthRole } from '@app/contracts';
+import type { AuthRoleGrant } from '@app/contracts';
 
 export class Credential {
   constructor(
@@ -6,6 +6,6 @@ export class Credential {
     public readonly userId: string,
     public readonly email: string,
     public readonly passwordHash: string,
-    public readonly role: AuthRole
+    public readonly roleGrants: AuthRoleGrant[]
   ) {}
 }
