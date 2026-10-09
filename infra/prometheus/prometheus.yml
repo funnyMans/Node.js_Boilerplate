@@ -29,15 +29,3 @@ scrape_configs:
   - job_name: 'auth-service'
     static_configs:
       - targets: ['auth-service:3002']
-
-  - job_name: 'orders-service'
-    static_configs:
-      - targets: ['orders:3003']
-
-  - job_name: 'payments-service'
-    static_configs:
-      - targets: ['payments:3010']
-
-  - job_name: 'inventory-service'
-    static_configs:
-      - targets: ['inventory:3011']

@@ -13,9 +13,9 @@
 ## Verification
 
 - [ ] Workspace build and lint pass
-- [ ] Relevant unit or ETL tests pass
+- [ ] Relevant unit or integration tests pass
 - [ ] Compose configuration is valid
-- [ ] Service contract and order journey are verified when affected
+- [ ] Service contract and relevant TMS workflow are verified when affected
 - [ ] Directly related documentation is updated
 - [ ] Promotion PRs use a merge commit; ordinary change PRs use squash
 

@@ -1,43 +1,59 @@
-# Contracts & Schemas
+# TMS service contracts
 
-Location: `packages/contracts/`
+The Load, Dispatch, and Execution services are the TMS domain owners. Their
+contracts represent business decisions and facts, not a shared database
+schema. Validate every request at the receiving service; a TypeScript type
+does not validate runtime data.
 
-Principles
+## Contract ownership
 
-- `packages/contracts` is the shared compile-time registry for DTO and event
-  types. It does not currently export runtime Zod schemas or generate OpenAPI.
-- Validate untrusted HTTP and event payloads at the receiving boundary; a
-  TypeScript type does not validate data at runtime. Runtime schemas currently
-  live with the service or test that owns that boundary.
-- Event envelope: `{ eventId, eventType, sourceService, version, occurredAt, correlationId, payload }`; `causationId` and `traceId` are optional.
-- Subject naming: `<service>.<entity>.<action>` (e.g., `orders.order.created`).
+- Load defines the ready-load commands and queries, requirements, and
+  revision history.
+- Dispatch defines capacity proposals, assignment authorization, and
+  assignment-state transitions.
+- Execution defines progress facts, exception handoffs, evidence, completion,
+  and correction records.
+- Identity defines authenticated principals and role grants. A caller's
+  grants are authorization inputs; each owning service still checks the
+  resource-specific authority and state transition.
+- `packages/contracts` may hold stable transport types and schemas used at
+  multiple boundaries. Do not move domain policy there merely to share it.
 
-Implemented order contracts:
+## Cross-service guarantees
 
-- `CreateOrderRequest` accepts product IDs and positive quantities; price is never trusted from the client.
-- `OrderCreatedEvent` uses the shared event envelope and is persisted to the orders outbox in the same transaction as the order.
-- NATS subject: `orders.order.created`; event type: `order.created.v1`.
-- The orders publisher writes to the file-backed `ORDERS` JetStream stream and waits for a publish acknowledgement before marking the outbox row published. The event ID is the broker deduplication key; consumers must still be idempotent because the deduplication window is bounded.
-- The stream is local single-replica storage with bounded retention. There is no application consumer yet, so the broker acknowledgement is not a business-processing acknowledgement.
-- The orders outbox exporter writes this unchanged event envelope as one JSONL record per S3 object under `raw/orders/created_date={UTC date}/events/`. Object keys are based on the outbox UUID so retries safely overwrite the same object.
+Before implementing an assignment request, define:
 
-Potential future schema work (not implemented as shared schemas today)
+- Stable load, assignment, capacity, and execution identifiers.
+- The exact authorization and load-readiness checks.
+- The response if Dispatch persists an assignment but Execution cannot
+  create its execution record.
+- Idempotency behavior for retried commands and duplicate delivery.
+- How pending/failed work is inspected, retried, and reconciled.
+- Which service owns each state transition and customer-safe projection.
 
-- Decide whether shared runtime schemas reduce meaningful duplication before
-  moving service-owned validation into `packages/contracts`.
-- If schemas are shared later, keep runtime parsing at each untrusted receiver.
+Do not report a fully active assignment until the defined cross-service
+invariants hold. Do not use distributed transactions. Select HTTP, events,
+or both only after those semantics are explicit.
 
-Versioning & compatibility
+## Event envelope (when durable events are justified)
 
-- The event envelope requires a `version` field.
-- Recommended policy: additive changes are backward-compatible; breaking
-  changes require a new event version and a compatibility test.
-- This policy is not currently enforced by a producer/consumer schema test in
-  CI. The opt-in order journey validates the event it observes, but there is no
-  application consumer contract to test yet.
+Use a versioned, validated event envelope with:
 
-Generation (future option)
+`eventId`, `eventType`, `sourceService`, `version`, `occurredAt`,
+`correlationId`, optional `causationId`, and a typed `payload`.
 
-- OpenAPI/JSON Schema generation is not currently configured. Consider
-  `zod-to-openapi` or a custom generator only alongside an agreed schema
-  ownership and compatibility policy.
+Events state facts that happened; commands request an owner to perform work.
+Assume duplicate and delayed delivery. Consumers must validate, be
+idempotent, expose failures, and define ordering and replay behavior. Do not
+add an event broker before the workflow needs durable asynchronous delivery.
+
+## Evolution
+
+Additive, backward-compatible contract changes may retain a version only
+when old receivers can safely accept them. Breaking changes require a new
+version and compatibility tests. Runtime parsing belongs at each receiver,
+even when producers and consumers share generated types.
+
+The complete first-slice API/event contract is a gate in the
+[development roadmap](./README_NEXT_STEPS.md); this note intentionally does
+not invent endpoint or event names before domain states are settled.

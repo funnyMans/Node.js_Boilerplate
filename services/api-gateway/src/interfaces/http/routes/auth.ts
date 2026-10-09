@@ -15,23 +15,6 @@ async function forwardResponse(response: Response, reply: FastifyReply) {
 }
 
 export function registerAuthRoutes(server: FastifyInstance, authServiceUrl: string) {
-  server.post('/auth/register', async (request, reply) => {
-    try {
-      const response = await fetch(`${authServiceUrl}/auth/register`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...getDownstreamRequestContext(request),
-        },
-        body: JSON.stringify(request.body),
-      });
-      return forwardResponse(response, reply);
-    } catch (error) {
-      server.log.error(error);
-      return reply.code(502).send(authUnavailableError);
-    }
-  });
-
   server.post('/auth/refresh', async (request, reply) => {
     try {
       const response = await fetch(`${authServiceUrl}/auth/refresh`, {

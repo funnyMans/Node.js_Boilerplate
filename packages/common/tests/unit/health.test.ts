@@ -43,14 +43,18 @@ describe('common health helpers', () => {
   });
 
   it('builds a degraded report when a dependency is unavailable or unknown', () => {
-    const report = buildHealthReport('users', { database: 'ok', redis: 'unknown', cache: 'error' });
+    const report = buildHealthReport('users', {
+      database: 'ok',
+      auth: 'unknown',
+      profiles: 'error',
+    });
     expect(report.service).toBe('users');
     expect(report.dependencies.database).toBe('ok');
     expect(report.status).toBe('degraded');
   });
 
   it('builds a down report when any dependency is explicitly down', () => {
-    const report = buildHealthReport('gateway', { users: 'ok', nats: 'down', temporal: 'ok' });
+    const report = buildHealthReport('api-gateway', { users: 'ok', auth: 'down' });
     expect(report.status).toBe('down');
   });
 

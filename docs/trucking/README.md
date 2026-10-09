@@ -1,26 +1,31 @@
-# Trucking work-platform discussion
+# TMS MVP and trucking work model
 
-These documents capture a **reference operating model** for discussing how a
-small US trucking company might coordinate work. They are not a product
-roadmap, implementation specification, or claim that the repository is
-becoming a full TMS. Keep the distinction clear:
+This section defines the product starting point for a self-directed TMS MVP
+and records the working business hypotheses behind it. There is no real
+customer requirement or validated company model. Use real-world trucking as
+input, then test and revise the model through implementation. The initial
+product slice is bounded; it is not a plan to build a complete TMS at once.
 
-- The project is a reusable Node.js backend foundation.
-- The trucking model is a realistic example for exploring business
-  boundaries, handoffs, and failure containment.
-- A future product should implement only the smallest complete workflow
-  justified by actual users and requirements.
+Start with these product documents:
 
-1. [Vision and boundaries](./VISION.md): what the platform is for and what
-   this discussion deliberately excludes.
-2. [Actors and authority](./RESPONSIBILITIES.md): who does the work, who may
-   decide, and how reporting differs from load accountability.
-3. [Load workflow](./WORKFLOW.md): sourcing priority, assignment, regional
-   differences, and handoffs.
-4. [Questions for later](./OPEN_QUESTIONS.md): the few answers needed before
-   implementing a real end-to-end workflow, plus details that can wait.
+1. [First-slice charter](./MVP_START.md): what, when, where, why, how, what
+   to do, and what not to do.
+2. [Target architecture](./MVP_ARCHITECTURE.md): the selected Load, Dispatch,
+   and Execution service boundaries and their relationships.
+3. [Vision and boundaries](./VISION.md): the product purpose, company model,
+   and scope exclusions.
 
-These are working hypotheses for a small US trucking company with its own
-fleet and brokerage. They are not universal industry practice or legal
-advice. Validate them with operators, customers, carriers, and qualified
-professionals before using them to run a real business.
+The broader domain references remain useful, but are hypotheses rather than
+implementation requirements:
+
+1. [Actors and authority](./RESPONSIBILITIES.md): illustrative roles,
+   decision rights, and handoffs.
+2. [Load workflow](./WORKFLOW.md): the broader sourcing and execution model,
+   including details deliberately deferred from the first slice.
+3. [Questions for later](./OPEN_QUESTIONS.md): decisions to resolve when the
+   first workflow actually depends on them.
+
+The example assumes a small US trucking company with its own fleet and
+brokerage. It is not universal industry practice or legal advice. Validate
+employment, carrier, brokerage, and safety rules before any real operational
+use.

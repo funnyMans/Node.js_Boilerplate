@@ -7,11 +7,11 @@ Create one configured logger per service and pass that same instance to
 Fastify and the service bootstrap:
 
 ```ts
-const logger = createLogger('orders-service', config.LOG_LEVEL);
+const logger = createLogger('api-gateway', config.LOG_LEVEL);
 const server = Fastify({ loggerInstance: logger });
 
 const { shutdown } = createServiceBootstrap(server, {
-  serviceName: 'orders-service',
+  serviceName: 'api-gateway',
 });
 ```
 

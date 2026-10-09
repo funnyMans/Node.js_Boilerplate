@@ -1,93 +1,91 @@
-# Architecture: current system and design boundaries
+# TMS system architecture
 
-This document describes the local system that currently exists and separates
-it from the longer-term project direction in
-[`PROJECT_IDEOLOGY.md`](./PROJECT_IDEOLOGY.md). The repository is evolving
-toward a production-minded, reusable backend foundation, but the current
-implementation is not a production-ready product or a validated deployment.
-Its separate services make boundaries, network calls, data ownership,
-asynchronous work, and operational costs concrete enough to evaluate.
+This is the architecture of the trucking TMS study system, not a generic
+backend template. We are defining and testing a realistic company model,
+not documenting a customer deployment. The target services are not yet
+implemented; repository/runtime status is tracked in the
+[development roadmap](./README_NEXT_STEPS.md).
 
-This note distinguishes what runs in the local system from optional design
-exercises. A technology appearing in a dependency, manifest, or diagram does
-not by itself mean that a complete integration exists.
+## Domain services and ownership
 
-For the running local stack, see [`../infra/README.md`](../infra/README.md).
-For request, event, and data flows, see [`diagrams.md`](./diagrams.md) and the
-[implementation walkthrough](./IMPLEMENTATION_WALKTHROUGH.md).
+The product is divided into three deliberately selected domain services:
 
-## Current local implementation
+| Service | Owns | Authority |
+| --- | --- | --- |
+| **Load** | Ready transportation commitments, requirements and revisions, and any deliberately customer-safe load status projection | Source of truth for what work was committed and the requirements to fulfill it |
+| **Dispatch** | Capacity proposals, assignment decisions and authorization history | Source of truth for who may authorize the capacity assigned to a load |
+| **Execution** | Assigned movement, progress, exceptions, evidence, completion, and corrections | Source of truth for operational facts and delivery evidence |
 
-| Concern                | Current implementation                                                                | Boundary                                                                                                                                                                                                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Repository             | `pnpm` workspaces with Turborepo tasks                                                | Local monorepo tooling; no claim of a configured remote build cache.                                                                                                                                                                                        |
-| Application runtime    | TypeScript and Fastify HTTP services                                                  | Services are separate processes in the development Compose stack.                                                                                                                                                                                           |
-| Persistence            | Prisma with PostgreSQL                                                                | Local Compose uses one PostgreSQL server with separate service databases.                                                                                                                                                                                   |
-| Authentication         | Auth service called by the API gateway                                                | The gateway is the intended user-facing entry point; auth is also loopback-published for local development.                                                                                                                                                 |
-| Messaging              | File-backed JetStream stream with an orders transactional outbox publisher            | Publisher waits for broker acknowledgement and deduplicates retries by event ID within the stream window. There is not yet an application consumer or consumer-processing acknowledgement.                                                                  |
-| Workflow               | Temporal workflow and worker in the orders application                                | Local Temporal is provided by Compose; payment/inventory calls use local HTTP services.                                                                                                                                                                     |
-| Payments and inventory | Local HTTP services with their own databases                                          | These are development implementations, not external provider integrations.                                                                                                                                                                                  |
-| Object storage and ETL | Moto S3-compatible mock plus Dagster                                                  | Moto is in-memory. Dagster writes curated Parquet but is not configured here with a production data warehouse.                                                                                                                                              |
-| Metrics and dashboards | Shared `prom-client` registration, Prometheus, Grafana                                | Prometheus scrapes all six HTTP services plus collector and Tempo internal metrics; orders additionally exports outbox-delivery gauges and alerts. Grafana provides a local metrics view.                                                                   |
-| Traces                 | OpenTelemetry bootstrap in all six HTTP services; OTLP/HTTP collector, Tempo, Grafana | W3C context is persisted in the orders outbox and continued through NATS headers, Temporal input/activities, and payment/inventory HTTP calls. Tempo stores local traces for bounded retention and Grafana can query them. CI does not verify trace search. |
-| CI                     | GitHub Actions plus local build/test scripts                                          | Automatic CI is paused for pushes and PRs targeting `dev`; required checks remain for `stage` and `main`. CI validates but does not deploy the system.                                                                                                      |
+Identity and workforce accounts own credentials and multi-role grants with
+optional area scope. A grant does not by itself authorize access to every
+load; services also enforce record ownership, assignment, and business
+authority. See the [role model](./trucking/RESPONSIBILITIES.md).
 
-The system's strongest end-to-end example is order creation: the API writes
-the order and event atomically; independent outbox workers publish to
-JetStream and export raw data, while workflow dispatch waits for successful
-NATS publication. Dagster can transform raw events into daily Parquet.
-See the walkthrough for the request's synchronous and asynchronous boundaries.
+Each domain service owns its data. Services communicate over validated
+interfaces; direct reads/writes to another service's tables and distributed
+transactions are not allowed.
 
-## Explicitly not current implementation
+## Main handoff
 
-The following are design options or future learning topics, not guarantees
-about the running local stack:
+```mermaid
+flowchart LR
+    Actor["Broker / dispatcher / supervisor / driver"] --> Gateway["API gateway"]
+    Gateway --> Identity["JWT identity<br/>role grants + area scope"]
+    Gateway --> Load["Load<br/>commitment + requirements"]
+    Gateway --> Dispatch["Dispatch<br/>proposal + authorized assignment"]
+    Gateway --> Execution["Execution<br/>progress + exceptions + evidence"]
+    Dispatch -->|"ready-load validation"| Load
+    Dispatch -->|"idempotent handoff after authorization"| Execution
+    Execution -.->|"approved customer-safe projection"| Load
+```
 
-- SNS/SQS, EventBridge, AWS S3, ECR, ECS/EKS, RDS, Step Functions, X-Ray, and
-  CDK-based deployment.
-- An application NATS consumer with explicit acknowledgements and idempotent
-  side effects; broker publish acknowledgement is not consumer completion.
-- A real payment-provider connection, production inventory source,
-  notification delivery, or shipping workflow.
-- Domain-specific metrics beyond order delivery, Alertmanager notifications,
-  and complete operational runbooks.
-- Kubernetes behavior in a live cluster, GraphQL/Apollo Federation, RabbitMQ,
-  and AI-agent workflows. These are possible future study topics only.
+This shows ownership and business relationships, not a finalized protocol.
+Select direct API calls, durable events, or a combination after defining
+consistency, latency, recovery, and operator requirements. The assignment
+handoff must make pending and failed states visible, prevent duplicate
+executions, and provide safe retry/reconciliation.
 
-Do not add a tool simply because it is common in production. First state the
-learning objective, compare it with a simpler option, identify the new failure
-modes and operational burden, and define how the result will be verified.
-Microservices, for example, make independent ownership and failure isolation
-visible here, while also adding network, deployment, and data-coordination
-complexity.
+## Assignment and automation
 
-## Design principles in the current code
+The initial assignment remains human-authorized: drivers and dispatchers
+provide priorities and operational knowledge; the accountable
+departure-area supervisor weighs those against the specific load's company
+benefit and confirms one assignment. Matching, ranking, one-click approval,
+capacity removal from competing candidate lists, preassignment, and
+automatic assignment are later steps. Define eligibility, company objectives,
+preference treatment, override behavior, and evaluation criteria before
+implementing them.
 
-- Keep service data ownership explicit, even when local services share one
-  PostgreSQL server.
-- Persist an order and its outbox event in the same transaction.
-- Keep NATS publication, raw-object export, and workflow dispatch outside the
-  customer-facing order transaction.
-- Use deterministic IDs/keys and idempotency contracts when retrying effects.
-- Persist only the W3C trace headers needed to continue asynchronous traces;
-  keep correlation IDs as the separate business-level join key and exclude
-  baggage from durable records.
-- Keep readiness distinct from background-delivery health; an HTTP-ready
-  service can still have a growing outbox backlog.
+## Repository implementation boundary
 
-## Learning path
+Retain only code serving this TMS model:
 
-1. Start with [`diagrams.md`](./diagrams.md) to map the system and its main
-   request/event flows.
-2. Follow one order through
-   [`IMPLEMENTATION_WALKTHROUGH.md`](./IMPLEMENTATION_WALKTHROUGH.md) and
-   [`orders_workflow.md`](./orders_workflow.md), noting where a synchronous
-   request ends and independent background work begins.
-3. Use [`../infra/README.md`](../infra/README.md) to run the stack and inspect
-   its health, logs, metrics, and Grafana/Tempo traces.
-4. Read [`SERVICE_CONTRACT.md`](./SERVICE_CONTRACT.md) to understand the
-   service-level checks and what their evidence cannot prove.
-5. Study focused topics in [`temporal.md`](./temporal.md),
-   [`contracts.md`](./contracts.md), and [`etl.md`](./etl.md).
-6. Use [`README_NEXT_STEPS.md`](./README_NEXT_STEPS.md) for the current
-   learning sequence and verified gaps.
+- Shared TypeScript runtime, validation, HTTP service, observability, and
+  stable contract packages.
+- API gateway, authentication, and user/workforce account capabilities,
+  adapted to TMS role grants, area scope, and JWT access with revocable
+  refresh sessions.
+- PostgreSQL and local engineering infrastructure needed to develop and
+  verify the domain services.
+
+Load, Dispatch, and Execution are the planned product services. The
+repository's retained implementation and infrastructure should support those
+capabilities or the engineering practices needed to test them.
+
+## Engineering constraints
+
+- Validate untrusted input and service-to-service contracts at the receiving
+  boundary. TypeScript types alone do not validate runtime data.
+- Keep domain rules independent of Fastify, Prisma, and transport adapters
+  where that separation improves testing and changeability.
+- Use finite request deadlines, bounded retry, idempotency, and explicit
+  failure states. Never report successful assignment or completion when a
+  downstream effect is unknown.
+- Record authority and evidence for assignments and corrections. Keep
+  sensitive operational detail out of customer-facing projections.
+- Add infrastructure only when an identified TMS workflow requires it and
+  its failure modes can be tested.
+
+For the company structure and flow, see the
+[vision](./trucking/VISION.md), [responsibilities](./trucking/RESPONSIBILITIES.md),
+[workflow](./trucking/WORKFLOW.md), and [first-slice charter](./trucking/MVP_START.md).

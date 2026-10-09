@@ -13,8 +13,11 @@ export function registerUserRoutes(
   server.get('/users', async (request, reply) => {
     const session = await authenticateRequest(request, reply, authClient);
     if (!session) return;
-    if (!userAccessPolicy.canListUsers(session.role)) {
-      const error: ForbiddenError = { code: 'FORBIDDEN', message: 'Admin access required' };
+    if (!userAccessPolicy.canListUsers(session.roleGrants)) {
+      const error: ForbiddenError = {
+        code: 'FORBIDDEN',
+        message: 'Workforce directory access required',
+      };
       return reply.code(403).send(error);
     }
 
@@ -47,7 +50,7 @@ export function registerUserRoutes(
     const { id } = request.params as { id: string };
     const session = await authenticateRequest(request, reply, authClient);
     if (!session) return;
-    if (!userAccessPolicy.canAccessUser(session.userId, id, session.role)) {
+    if (!userAccessPolicy.canAccessUser(session.userId, id, session.roleGrants)) {
       const error: ForbiddenError = { code: 'FORBIDDEN', message: 'User access denied' };
       return reply.code(403).send(error);
     }
@@ -77,8 +80,9 @@ export function registerUserRoutes(
     if (!session) return;
 
     const canUpdateTarget =
-      userAccessPolicy.hasPermission(session.role, 'users:update:any') ||
-      (session.userId === id && userAccessPolicy.hasPermission(session.role, 'users:update:own'));
+      userAccessPolicy.hasPermission(session.roleGrants, 'workforce:update:any') ||
+      (session.userId === id &&
+        userAccessPolicy.hasPermission(session.roleGrants, 'workforce:update:own'));
     const body =
       request.body && typeof request.body === 'object' && !Array.isArray(request.body)
         ? (request.body as Record<string, unknown>)
@@ -89,11 +93,7 @@ export function registerUserRoutes(
     const isProfileUpdate =
       Object.keys(body).length > 0 &&
       Object.keys(body).length === Object.keys(profileUpdate).length;
-    const isAdminStatusChange =
-      (body.status === 'blocked' || body.status === 'active') &&
-      userAccessPolicy.canBanUser(session.role);
-
-    if ((!canUpdateTarget || !isProfileUpdate) && !isAdminStatusChange) {
+    if (!canUpdateTarget || !isProfileUpdate) {
       const error: ForbiddenError = { code: 'FORBIDDEN', message: 'User access denied' };
       return reply.code(403).send(error);
     }
@@ -107,7 +107,7 @@ export function registerUserRoutes(
           'x-authenticated-user-id': session.userId,
           ...requestContext,
         },
-        body: JSON.stringify(isAdminStatusChange ? { status: body.status } : profileUpdate),
+        body: JSON.stringify(profileUpdate),
       });
 
       if (!res.ok) {
@@ -125,8 +125,11 @@ export function registerUserRoutes(
   server.get('/users/count', async (request, reply) => {
     const session = await authenticateRequest(request, reply, authClient);
     if (!session) return;
-    if (!userAccessPolicy.canListUsers(session.role)) {
-      const error: ForbiddenError = { code: 'FORBIDDEN', message: 'Admin access required' };
+    if (!userAccessPolicy.canListUsers(session.roleGrants)) {
+      const error: ForbiddenError = {
+        code: 'FORBIDDEN',
+        message: 'Workforce directory access required',
+      };
       return reply.code(403).send(error);
     }
 

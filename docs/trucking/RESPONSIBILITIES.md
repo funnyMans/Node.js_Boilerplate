@@ -1,9 +1,42 @@
-# Actors and authority
+# Company roles and authority
 
-This is an illustrative responsibility model, not an org chart that every
-carrier should adopt. The named roles describe ownership and decision
-boundaries; they do not imply that every role needs a separate application
-account or that the software should automate every responsibility.
+This is the selected role and responsibility model for our TMS study company,
+not an org chart every carrier should adopt. The company model is informed by
+real-world operations and remains subject to evidence and applicable law.
+Roles define authority and responsibilities; they do not imply one account
+per job title or that every responsibility is automated.
+
+An account may hold **multiple role grants**, each optionally scoped to an
+area. For example, the chief supervisor has company-wide supervisory
+coordination authority and a separate `area_supervisor` grant scoped to LA.
+The four area keys are `la`, `west`, `central`, and `east`. A role/area grant
+is only a coarse authorization input: access to a particular load or
+execution must also be checked against its ownership and assignment. A
+driver's operating area must not be used as a substitute for checking which
+work is assigned to that driver.
+
+## Role grant catalog
+
+| Grant                          | Scope                                    | Core responsibility                                                                           |
+| ------------------------------ | ---------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `transportation_executive`     | Company-wide                             | Department-level escalation and cross-department decisions                                    |
+| `chief_supervisor`             | Company-wide                             | Supervisory coordination and direction of area supervisors                                    |
+| `area_supervisor`              | One or more areas                        | Accountable operational outcome and assignment authority for departures from the granted area |
+| `broker`                       | One or more areas                        | Load readiness, commercial coordination, and verified customer communication                  |
+| `outer_fleet_broker`           | Company-wide                             | Cross-area managed/spot outer-capacity sourcing when that capability is in scope              |
+| `fleet_dispatcher`             | Assigned fleet group(s), optionally area | Day-to-day in-house driver/truck coordination and capacity proposals                          |
+| `contract_capacity_dispatcher` | Carrier relationship(s)                  | Coordination and progress follow-up under the applicable agreement                            |
+| `in_house_driver`              | Individual driver identity               | Safe execution and factual progress/exception reporting for assigned work                     |
+| `contracted_driver`            | Carrier relationship and individual      | Contracted execution and required reporting                                                   |
+| `customer_contact`             | Own customer/load relationships only     | Submit instructions and receive explicitly permitted customer status                          |
+| `outside_carrier_contact`      | Own carrier/load relationships only      | Accept/tender work and report agreed execution milestones                                     |
+| `outer_fleet_supervisor`       | Company-wide                             | Future contract-capacity program oversight if scale justifies the role                        |
+
+The outer-fleet and external-counterparty grants describe later capabilities
+in the company model. The first product slice need only enable the roles
+required by its selected assignment and execution scenarios. Do not grant
+company-wide visibility simply because a role is company-wide in the
+reporting chart.
 
 ## Reporting and coordination
 
@@ -164,5 +197,5 @@ An absence does not silently remove an active load's accountable owner.
 The system records the cover and whether responsibility is temporary or
 transferred, based on expected absence duration relative to the load's
 delivery date. If business contraction reduces staffing without changing
-the driver-to-administrator relationship, the operating rules need not
+the driver-to-supervisor relationship, the operating rules need not
 change solely because headcount fell.

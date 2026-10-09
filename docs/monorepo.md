@@ -1,9 +1,9 @@
-# Monorepo & Service Structure
+# TMS monorepo and service structure
 
-This repository uses a DDD-inspired layered layout and keeps generated
-artifacts out of `src/`. Service boundaries are shared, but the depth of
-domain/application layering should match each service's actual complexity;
-not every small service needs every possible folder.
+This repository contains the TMS study system. Its domain boundaries are
+Load, Dispatch, and Execution. Keep
+generated artifacts out of `src/`, and use only the layers that make each
+service's business responsibility easier to understand and test.
 
 ## Root conventions
 
@@ -11,18 +11,22 @@ not every small service needs every possible folder.
 - `pnpm-workspace.yaml` — workspace membership
 - `tsconfig.base.json` — shared TypeScript compiler settings
 - `eslint.config.mjs` — single active lint configuration
-- `docs/` — architecture and project documentation
+- `docs/` — TMS company model, architecture, contracts, and development guidance
 - `infra/` — runtime infrastructure and compose files
 
 ## Shared packages
 
 - `packages/common/` — shared logger, tracing, health, config, and bootstrap helpers
-- `packages/common-infra/` — Redis, NATS, Temporal, and broker abstractions
-- `packages/contracts/` — DTOs, event shapes, validation contracts, and shared typing
+- `packages/contracts/` — stable TMS transport types and runtime validation shared by multiple owners
+- `services/api-gateway/` — authenticated public API entrypoint and route composition
+- `services/auth-service/` — credentials, JWT access, refresh rotation/revocation, and role grants
+- `services/users/` — workforce/person profile records, with no independent role authority
 
-## Canonical service template
+## TMS domain services
 
-Each service under `services/<service>/` should look like this:
+The target domain services are `services/loads/`, `services/dispatch/`, and
+`services/execution/`. Add them after the model and contracts are settled.
+Each should look like this:
 
 - `package.json`
 - `Dockerfile`

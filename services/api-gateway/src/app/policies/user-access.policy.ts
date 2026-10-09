@@ -1,67 +1,45 @@
-import type { AuthRole } from '@app/contracts';
+import type { AuthRole, AuthRoleGrant } from '@app/contracts';
 
-export type UserPermission =
-  | 'users:list'
-  | 'users:read:any'
-  | 'users:read:own'
-  | 'users:update:own'
-  | 'users:update:any'
-  | 'users:ban';
+export type WorkforcePermission =
+  | 'workforce:list'
+  | 'workforce:read:any'
+  | 'workforce:read:own'
+  | 'workforce:update:any'
+  | 'workforce:update:own';
 
 export type UserAccessPolicy = {
-  hasPermission: (role: AuthRole, permission: UserPermission) => boolean;
-  canAccessUser: (sessionUserId: string, targetUserId: string, role: AuthRole) => boolean;
-  canListUsers: (role: AuthRole) => boolean;
-  canBanUser: (role: AuthRole) => boolean;
+  hasPermission: (grants: AuthRoleGrant[], permission: WorkforcePermission) => boolean;
+  canAccessUser: (sessionUserId: string, targetUserId: string, grants: AuthRoleGrant[]) => boolean;
+  canListUsers: (grants: AuthRoleGrant[]) => boolean;
 };
 
-const rolePermissions: Record<AuthRole, UserPermission[]> = {
-  user: ['users:read:own', 'users:update:own'],
-  admin: [
-    'users:list',
-    'users:read:any',
-    'users:read:own',
-    'users:update:own',
-    'users:update:any',
-    'users:ban',
-  ],
-};
+const companyAuthorityRoles: AuthRole[] = ['transportation_executive', 'chief_supervisor'];
+
+function hasCompanyAuthority(grants: AuthRoleGrant[]): boolean {
+  return grants.some(
+    ({ role, area }) => area === undefined && companyAuthorityRoles.includes(role)
+  );
+}
 
 export const userAccessPolicy: UserAccessPolicy = {
-  hasPermission(role: AuthRole, permission: UserPermission): boolean {
-    return rolePermissions[role]?.includes(permission) ?? false;
-  },
-  canAccessUser(sessionUserId: string, targetUserId: string, role: AuthRole): boolean {
-    if (userAccessPolicy.hasPermission(role, 'users:read:any')) return true;
-    if (userAccessPolicy.hasPermission(role, 'users:read:own')) {
-      return sessionUserId === targetUserId;
+  hasPermission(grants: AuthRoleGrant[], permission: WorkforcePermission): boolean {
+    if (permission === 'workforce:read:own' || permission === 'workforce:update:own') {
+      return grants.length > 0;
     }
-    return false;
+    if (permission === 'workforce:list' || permission === 'workforce:read:any') {
+      return hasCompanyAuthority(grants);
+    }
+    return grants.some(
+      ({ role, area }) => role === 'transportation_executive' && area === undefined
+    );
   },
-  canListUsers(role: AuthRole): boolean {
-    return userAccessPolicy.hasPermission(role, 'users:list');
+  canAccessUser(sessionUserId, targetUserId, grants): boolean {
+    if (userAccessPolicy.hasPermission(grants, 'workforce:read:any')) return true;
+    return (
+      sessionUserId === targetUserId && userAccessPolicy.hasPermission(grants, 'workforce:read:own')
+    );
   },
-  canBanUser(role: AuthRole): boolean {
-    return userAccessPolicy.hasPermission(role, 'users:ban');
+  canListUsers(grants): boolean {
+    return userAccessPolicy.hasPermission(grants, 'workforce:list');
   },
 };
-
-export function hasUserPermission(role: AuthRole, permission: UserPermission): boolean {
-  return userAccessPolicy.hasPermission(role, permission);
-}
-
-export function canAccessUser(
-  sessionUserId: string,
-  targetUserId: string,
-  role: AuthRole
-): boolean {
-  return userAccessPolicy.canAccessUser(sessionUserId, targetUserId, role);
-}
-
-export function canListUsers(role: AuthRole): boolean {
-  return userAccessPolicy.canListUsers(role);
-}
-
-export function canBanUser(role: AuthRole): boolean {
-  return userAccessPolicy.canBanUser(role);
-}
