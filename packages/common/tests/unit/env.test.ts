@@ -47,4 +47,21 @@ describe('common env helpers', () => {
       )
     ).toThrow(/TEST_SERVICE_PORT/i);
   });
+
+  it('reports every invalid environment variable in one error', () => {
+    const env = {
+      TEST_SERVICE_PORT: 'abc',
+      TEST_SERVICE_NAME: '',
+    };
+
+    expect(() =>
+      createConfig(
+        {
+          TEST_SERVICE_PORT: z.coerce.number().min(1),
+          TEST_SERVICE_NAME: z.string().min(1),
+        },
+        env
+      )
+    ).toThrow(/(?=.*TEST_SERVICE_PORT)(?=.*TEST_SERVICE_NAME)/s);
+  });
 });

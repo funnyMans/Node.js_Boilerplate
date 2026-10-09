@@ -1,4 +1,4 @@
-import type { AuthRole } from '@app/contracts';
+import type { AuthRoleGrant } from '@app/contracts';
 
 export class Session {
   constructor(
@@ -6,7 +6,7 @@ export class Session {
     public readonly token: string,
     public readonly refreshToken: string,
     public readonly userId: string,
-    public readonly role: AuthRole,
+    public readonly roleGrants: AuthRoleGrant[],
     public readonly expiresAt: Date,
     public readonly refreshExpiresAt: Date
   ) {}

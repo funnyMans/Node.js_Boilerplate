@@ -1,298 +1,151 @@
-# Roadmap: operating the services as one system
+# TMS study and development roadmap
 
-This is a learning roadmap for understanding the system already in the
-repository, not a feature roadmap or a plan to deploy a product. Do not add
-services just to make the stack larger. Each phase should leave behind a
-readable explanation, repeatable evidence, and a clear statement of what has
-and has not been verified.
+This roadmap is for a realistic TMS study system built around the company
+defined in the [vision](./trucking/VISION.md). We are the owners of the model,
+not a real customer. Business rules must be informed by real operating
+practice and applicable law, recorded with assumptions, and tested. This
+sequence separates defining the system from building its business features.
 
-## Current focus — learn and configure what exists
+## Stage 0 — align the retained foundation
 
-Pause new services and business functionality while working through the
-existing architecture: follow the main order journey, study the responsibility
-of each service and tool, and learn how logs, traces, metrics, tests, and
-health signals explain its behavior. Improve the diagrams and guides wherever
-they leave a learner to infer an important boundary.
+Keep only documentation, services, packages, and runtime components that
+support the TMS company model or the engineering needed to test it. Adapt the
+identity and account-profile foundation to TMS roles, scoped grants, JWT
+access, revocable refresh rotation, and trusted provisioning. Do not begin
+implementing Load, Dispatch, or Execution behavior during this cleanup stage.
 
-The next operational exercise is Phase 5 below, but first understand the
-relevant service, expected signal, and recovery action. Kubernetes,
-GraphQL/Apollo Federation, RabbitMQ, AI agents, and deployment are possible
-future learning topics—not current requirements or commitments.
+**Exit:** maintained documentation, workspace scripts, Compose, CI,
+contracts, and retained services consistently describe this TMS study; no
+unrelated product implementation remains.
 
-## Phase 1 — Make the current setup the source of truth
+## Stage 1 — establish the operating model
 
-**Goal:** accurately document the Compose stack, its dependencies, health
-semantics, ports, monitoring coverage, and one-shot jobs.
+1. Confirm the company baseline: US trucking company with its own fleet and
+   brokerage; approximately 50–100 trucks; LA (home), West, Central, and
+   East areas.
+2. Confirm the workforce and authority relationships: transportation
+   leadership, chief/area supervisors, brokers, shared fleet dispatchers,
+   drivers, and contract-capacity roles where in scope.
+3. Model role grants as potentially multiple per account, optionally scoped
+   to areas. Keep role grants distinct from load ownership, assignment, and
+   specific resource authorization.
+4. Define the important nouns and their ownership: customer commitment,
+   freight, load, capacity (driver, power unit, trailer), assignment,
+   execution, trip/itinerary, operational facts, and correction history.
+5. Validate legal/contractual requirements with authoritative sources and
+   qualified professionals where necessary. Record what is a legal
+   constraint, company policy, or an unverified assumption.
 
-**Current work:** documentation has been aligned with the checked Compose
-configuration. The local operations guide documents individual image builds
-followed by `up --no-build`, configured health checks, trace-export targets,
-and the distinction between a successful init job and a healthy long-running
-service. Architecture notes and Mermaid sources now label implemented local
-components separately from optional future choices.
+**Exit:** a readable domain glossary, role/authority matrix, ownership map,
+and representative normal/exception scenarios that agree with one another.
 
-**Verified:** on 2026-09-29 the gateway and its declared dependency set were
-started with `docker compose ... up -d --no-build --wait api-gateway`. Compose
-reported the gateway and its health-checked dependencies healthy; the S3 init
-job exited successfully. The full development stack (Dagster, Nginx,
-Prometheus, Grafana, and OTel collector) was not started in this check.
+## Stage 2 — define assignment before automating it
 
-**Done when:** documentation matches the checked Compose services and files,
-monitoring targets are explicit, and a no-build start has been checked against
-the readiness expectations without rebuilding all images together. The
-documented core order-service dependency set has passed that live no-build
-readiness check; the optional full-stack monitoring/ETL processes have not
-been started as part of this verification.
+The assignment model must preserve both employee input and company
+accountability:
 
-**Remaining gaps:** `temporal`, `nginx`, Prometheus, Grafana, and the OTel
-collector have no Compose health checks. The Moto S3 mock has a TCP readiness
-check, and the bucket init job now waits for that check. This only proves the
-listener accepts connections, not that S3 operations or seeded objects are
-correct.
+- Drivers express readiness and priorities; dispatchers add operational
+  knowledge and propose feasible capacity.
+- The departure-area supervisor remains accountable and weighs those inputs
+  against the benefit and requirements of the specific load.
+- Define load-specific company objectives, hard eligibility constraints,
+  employee-priority treatment, conflicts, overrides, and the rationale that
+  must be retained. Do not substitute one universal score for the model
+  without evidence.
+- An approved assignment must be authoritative and remove that capacity
+  from competing available candidates consistently.
 
-## Phase 2 — Prove a critical journey end to end
+First model and test the human decision and its information needs. Only then
+add system guidance:
 
-**Goal:** make the order flow a repeatable integration scenario from client to
-persisted and delivered effects.
+1. Display feasible candidates and the data/reasons behind each.
+2. Add explainable rankings that can be overridden by the accountable
+   supervisor.
+3. Evaluate a one-click approval flow, including race conditions and
+   duplicate approval.
+4. Evaluate preassignment at defined operational stages.
+5. Consider automatic assignment only after the objectives, legal/contract
+   constraints, employee preferences, exception handling, and measured
+   outcomes are clear.
 
-Trace one request through gateway authentication, orders persistence, the
-transactional outbox, NATS, Temporal, payment and inventory activities, and
-the raw S3 export. Record the expected database rows, event/workflow state,
-response, and logs/traces for success and failure cases. The opt-in
-`pnpm docker:order-journey` check covers authentication rejection, successful
-payment/inventory confirmation, NATS publication, raw export, Temporal
-dispatch, and the inventory-unavailable/refund/cancel compensation path. It
-uses a separate Compose override with a deterministic local fake Stripe
-adapter; the normal development configuration does not enable that adapter.
+**Exit:** the data and decision rules can explain a manual assignment and
+support tests for eligibility, fairness to stated priorities, company
+benefit, supervisor override, and competing capacity claims.
 
-**Verified 2026-09-29:** the live journey passed with one test. The successful
-order was charged, reserved, and confirmed; the insufficient-inventory order
-completed its workflow after refund and cancellation. The test also verified
-unauthenticated rejection, matching correlation/event IDs, outbox delivery
-timestamps, raw JSONL content in Moto, and both Temporal terminal states.
-`docker:e2e-up` reused existing images after rebuilding only the payments
-image; it did not build the full stack together.
+## Stage 3 — freeze the first service architecture and slice contracts
 
-**Phase status:** complete for the local success and compensation paths. Real
-Stripe behavior and transient dependency outage/retry behavior remain
-unverified.
+Use three domain services:
 
-**Done when:** a focused automated test or concise operator procedure can
-prove the flow, exercise a business failure, show compensation behavior, and
-locate the failure stage. The repeatable journey now covers the authenticated
-success path through payment charge, inventory reservation, and confirmation,
-plus insufficient inventory through refund and cancellation. Transient
-dependency outage/retry behavior and real Stripe provider behavior remain
-separate verification work.
+- **Load** owns the ready transportation commitment and requirement
+  revisions.
+- **Dispatch** owns capacity proposals, supervisor authorization, and the
+  authoritative assignment.
+- **Execution** owns the movement record, progress, exception handoffs,
+  evidence, completion, and correction history.
 
-## Phase 3 — Extend traceability across asynchronous work
+Each service owns its persistence and validates requests at its boundary.
+Identity owns credentials and scoped role grants. Avoid shared-table access
+and distributed transactions. Define assignment-to-execution partial
+failure, idempotency, retry/reconciliation, authorization, and visible
+pending/failed states before committing to an API/event sequence.
 
-**Goal:** preserve one W3C trace across the HTTP request, durable outbox, and
-each asynchronous delivery stage while keeping correlation IDs as the
-business-level join key.
+**Exit:** context map, data ownership, contracts, authority checks, and
+cross-service failure behavior are precise enough to implement and test.
 
-**Implemented:** the orders request's `traceparent`/`tracestate` carrier is
-stored with the transactional outbox event. NATS publication injects those
-headers, raw S3 export and Temporal workflow start create spans, workflow
-input carries the Temporal start context, and workflow activities create
-spans and pass context to payments/inventory. Baggage is intentionally
-excluded from durable storage and NATS headers. The E2E journey now checks
-that the stored trace ID matches its caller-supplied ID and that NATS
-publication is a child span.
+## Stage 4 — implement one complete manual vertical slice
 
-**Verified 2026-09-29:** common, common-infrastructure, and orders
-TypeScript builds passed; focused trace, orders-route, activity, metrics, and
-NATS tests passed (11 passed). All six HTTP service images were rebuilt
-sequentially, the full E2E Compose stack was recreated with `--no-build
---wait`, the migration applied, all configured health checks passed, and the
-one-shot S3 init exited `0`. The six-service contract probe and live
-success/compensation order journey passed. The journey verified that the
-outbox trace ID matched its caller-supplied trace ID, the NATS publish used a
-child span ID, and the same trace IDs appeared in orders, payments, and
-inventory logs. Prometheus reported all six application targets up and loaded
-the NATS, workflow-start, and raw-export terminal alerts.
+Start from a controlled, ready-to-operate load and complete:
 
-**Remaining limits:** this repository has no application NATS consumer; the
-journey subscribes only to inspect headers. Tempo and Grafana are now
-configured in the local stack for trace storage and search, but the current CI
-journey does not verify trace search or retention. A controlled dependency
-fault remains for the later failure-drill phase.
+1. A dispatcher proposes capacity without reserving it.
+2. An authorized departure-area supervisor confirms one assignment.
+3. An execution is created exactly once and progress is recorded.
+4. A representative exception reaches the accountable person and receives
+   an explicit resolution or remains open.
+5. Selected delivery evidence records completion.
+6. A correction preserves the original fact and the audit trail.
 
-**Phase status:** complete for trace context persistence and propagation
-through the exercised local order journey. NATS consumer-side continuation is
-not in scope because there is no application consumer. Trace search is
-configured locally but is not yet covered by automated verification.
+Test unauthorized actions, duplicate requests, stale/conflicting updates,
+and an unavailable downstream service. Make externally visible status
+deliberate and keep internal notes/evidence protected.
 
-## Phase 4 — Add measured recovery and data-lifecycle safeguards
+**Exit:** integration scenarios prove the end-to-end path and failure/recovery
+behavior, not just isolated endpoints. Revise the domain and architecture
+based on what the implementation teaches.
 
-**Goal:** establish safe foundations for local secrets, process recovery,
-bounded retries, operator requeue, shutdown, and retention before inducing a
-failure.
+## Stage 5 — add useful decision support and automation
 
-**Implemented; local lifecycle and outbox behavior verified:** Compose
-credentials and tokens can be overridden through `.env`; production-mode
-config rejects the known local service/auth tokens. The six HTTP containers use
-`restart: unless-stopped` and a 40-second stop grace period. NATS, raw-export,
-and Temporal-dispatch outbox stages cap their delivery attempts at 10 with
-backoff; Temporal workflow activities retain Temporal's separate retry
-policy. Exhausted workflow/raw-export stages have terminal timestamps,
-metrics, and alerts. Outbox retention is opt-in (`OUTBOX_RETENTION_DAYS=0`
-disables it) and only removes rows after NATS, Temporal start, and raw export
-are complete. The migration, explicit local development-mode wiring, terminal
-alert rules, and running retention default (`0`) were verified; retention
-remains disabled. Production-mode secret rejection is implemented but was not
-runtime-tested in this Compose verification, so this phase's secret/config
-guardrail verification is still partial.
+After the manual path and domain structures are stable, implement matching
+and ranking incrementally. Make reasons, input data, constraints, and
+overrides visible. Then evaluate one-click approval, capacity removal from
+other candidate lists, preassignment, and finally automatic assignment.
+Each step needs measurable criteria for company benefit, employee
+priorities, operational safety, fairness, and error recovery.
 
-**Verified 2026-09-30:** a bounded drill used one existing completed order.
-The expired-lock paths marked its workflow-start and raw-export stages
-terminal after 10 attempts; their metrics reached `1`, and both Prometheus
-alerts reached `firing`. The documented one-row requeue statements restarted
-only those stages; they completed, cleared their terminal timestamps/gauges,
-and did not alter the NATS state. A separate simulated exhausted NATS publish
-reached `FAILED`, raised its gauge and alert to `firing`, and the documented
-NATS requeue republished the event with its W3C trace header and cleared the
-gauge. These were controlled database-state drills, not dependency outages.
+Do not treat automation as the default endpoint. Keep manual decision
+authority where policy, law, uncertainty, or operational judgment requires
+it.
 
-The retention sweep was tested with one disposable completed row dated more
-than 10 years ago while runtime retention was temporarily set to 3650 days.
-The row was pruned and logged; the normal runtime value was restored to `0`,
-and no other outbox row was eligible. The current bounded verification also
-confirmed that all three terminal alerts returned to `inactive` after recovery.
-The disposable row remains deleted. The drill confirms eligibility and the
-sweep path, but did not stress-test a 500-row batch. Attempt counters were
-placed at the configured limit to exercise terminal transitions; this did not
-run ten real dependency failures or measure the full backoff schedule.
+## Stage 6 — expand the TMS only by demonstrated workflow need
 
-**Verified 2026-09-30:** all six HTTP services exited `0` on SIGTERM with
-`OOMKilled=false`. The users image previously launched a stale entrypoint
-without the shared shutdown handler; the build now clears `dist` and all
-launch paths point to `dist/src/server.js`. The same live drill exposed an
-orders startup race: a signal during Temporal workflow-bundle compilation
-could request worker shutdown before `Worker.run()`, leaving the connection
-held until Docker killed the process with exit `137`. The worker now starts
-its run loop before honoring shutdown in that race. A focused regression test
-failed before the fix and passed afterward; the rebuilt orders container
-logged `STOPPED` and shutdown completion and exited `0`. The orders container
-was restarted, the full stack recovered healthy, and both the service-contract
-probe and order journey passed again. Changing Compose Postgres credentials
-does not rotate the user or password in an initialized named volume.
-Retention does not delete raw objects or Temporal history.
+Candidate later capabilities include customer/brokerage intake, outside
+carriers, customer-facing access, tracking integrations, workforce
+availability, maintenance, legal/HOS compliance, settlement, analytics, and
+cross-company integrations. Define their owner, authoritative source,
+business rules, privacy/legal constraints, failure behavior, and verification
+plan before adding them.
 
-**Done when:** terminal recovery/requeue and retention eligibility are
-verified, all six HTTP processes stop within the configured window, and local
-secrets/config behavior is validated without claiming production secret
-management.
+## Supporting engineering gates
 
-## Phase 5 — Run controlled failure and recovery drills
-
-Only after Phases 3 and 4 are verified, make one dependency or delivery stage
-unavailable at a time. Record readiness behavior, retry/backoff, terminal
-state, Prometheus alert transitions, logs, and trace/correlation IDs; restore
-the dependency and prove recovery. Start with reversible local faults (for
-example, temporarily blocking the raw-export endpoint or stopping one
-dependency), preserve named volumes, and restore the service before testing a
-different failure.
-
-**Done when:** each drill has a bounded procedure, an expected signal at each
-layer, an observed result, and a documented recovery action. Do not use
-unbounded outages or volume deletion as a fault-injection shortcut.
-
-## Phase 6 — Automate the proven checks
-
-After the local procedures are stable, put Compose validation, focused tests,
-builds, service-contract probes, and the order journey into staged CI checks.
-Keep memory-heavy image builds sequential or otherwise explicitly resource
-bounded, and report the failing service/stage rather than only a generic job
-failure.
-
-**First CI slice added:** `.github/workflows/ci.yml` runs on pushes to `main`,
-pull requests, and manual dispatch. It installs from the frozen pnpm lockfile,
-checks workflow formatting, builds the workspace, then runs lint and unit
-tests. Building first also generates the workspace declarations and Prisma
-clients required by lint's import resolver on a clean runner. The build gets a
-CI-only placeholder `DATABASE_URL` so Prisma configuration and client
-generation work without a running database; the build does not connect to it.
-A separate lightweight job validates the development and E2E Compose
-configurations without building images or starting containers. This is the
-initial gate, not proof that the live service contracts or order journey pass
-on a clean CI runner. A dedicated Python 3.12 job installs the ETL requirements
-and runs the ETL unit tests independently.
-
-**Integration stage added:** a dependent job builds the six HTTP images and
-the shared ETL image in separate sequential steps, starts the gateway and its
-Compose dependency graph with `--no-build --wait`, runs the six-service
-contract probe, seeds the E2E S3 mock, and runs the authenticated order
-journey. It collects Compose logs after a failed step and always attempts
-stack teardown. It waits for the lint/build, Compose-validation, and ETL jobs
-to complete first so this memory-intensive stage does not overlap them.
-
-**Verified 2026-09-30:** the initial hosted integration attempts caught and
-fixed two clean-build assumptions: Turbo needs root `turbo.json` inside each
-Node service build context, and Prisma generation needs `DATABASE_URL` during
-image build. All six Node Dockerfiles now copy `turbo.json`; the five Prisma
-builder stages use a non-secret placeholder URL that is absent from the final
-runtime stages. The successful hosted run then built all six HTTP images and
-the shared ETL/Moto image in separate sequential steps, started the E2E
-dependency graph with `--no-build --wait`, passed the six-service contract
-probe, seeded the S3 mock, and passed the authenticated order journey. The
-failure-log collection and teardown steps also completed as configured. See
-the [successful GitHub Actions run](https://github.com/funnyMans/Node.js_Boilerplate/actions/runs/36764059658).
-
-This proves the local operator contract and order-journey commands on a clean
-hosted runner. It does not build images in parallel or start optional Dagster,
-Prometheus, Grafana, Nginx, the OTel collector, or Tempo as part of the
-integration job.
-
-The `deepmerge-ts` alert is addressed by a scoped pnpm override for
-`@prisma/config`, selecting patched `deepmerge-ts` 8.0.2 while keeping the
-Prisma 7.10.0 CLI and client unchanged. A frozen install, forced full workspace
-build (including Prisma client generation), lint, and all 80 unit tests passed
-with that override. GitHub Dependabot subsequently marked the alert fixed.
-
-Prisma 8 remains a separate compatibility migration. Registry metadata lists
-`prisma` 8.0.0-rc.19 as latest, but `@prisma/client` remains at 7.10.0 and
-returns 404 for 8.0.0-rc.19. Do not mix the CLI prerelease with the v7 client;
-start the major migration once Prisma publishes matching packages, then test
-all five service schemas, adapters, migrations, Docker builds, and integration
-journeys as a dedicated change.
-
-**Phase status: complete for current local contracts and journey.** A clean
-hosted CI run proves the workspace build, lint, unit and ETL tests, Compose
-configuration, sequential image builds, six-service contract probe, and
-critical order journey. Automatic CI for pushes and PRs targeting `dev` is
-temporarily paused; required checks remain active for `stage` and `main`.
-Manual workflow dispatch remains available. CI is a regression and learning
-tool, not a deployment pipeline.
-
-## Branch workflow and merge policy
-
-The repository uses `main` as its stable reference branch, with protected
-`stage` and `dev` branches for integration and ongoing learning work. Normal
-feature/fix branches target `dev`; promotion pull requests advance `dev` to
-`stage`, then `stage` to `main`. Ordinary change PRs use squash; promotion and
-branch synchronization PRs use merge commits to preserve shared ancestry and
-prevent previously promoted work from reappearing in later PRs. All three
-branches require pull requests and resolved review threads; deletion and
-non-fast-forward updates are blocked. Required CI checks apply to `stage` and
-`main`, but are temporarily exempted on `dev` while automatic CI is paused
-there. The repository currently has one maintainer, so approving reviews are
-not required. See
-[`CONTRIBUTING.md`](../CONTRIBUTING.md) for the branch flow, PR requirements,
-and local validation commands.
-
-## Deployment — intentionally out of scope
-
-There is no deployment milestone. Revisit deployment only if it becomes a
-specific learning objective; doing so is not required to complete this
-learning lab. Kubernetes, GraphQL/Apollo Federation, RabbitMQ, and AI agents
-are also possible study topics rather than scheduled work.
-
-## Working rule
-
-For each change, explain the learning objective, relevant scenario, design
-choice and simpler alternative, failure behavior, and verification evidence.
-Update the relevant guide and diagrams, and state what remains unverified.
-Prefer a small targeted check before starting the full stack; use a no-build
-stack start when live integration evidence is needed and resource headroom
-allows it.
+- Keep strict TypeScript, explicit runtime validation at service boundaries,
+  structured logging, health/readiness, traces, and metrics that reveal
+  workflow failures.
+- Verify every service build and focused tests before running the workspace
+  suite. Use PostgreSQL-backed integration tests for persistence and
+  cross-service boundaries.
+- Keep local Compose configuration small and reproducible. Add queues,
+  workflow orchestration, caches, or deployment systems only to satisfy a
+  defined workflow or test.
+- Update architecture, operating assumptions, and tests together whenever
+  observed behavior changes the model.
+- Do not claim customer fit, legal compliance, scale, or production readiness
+  from local tests.

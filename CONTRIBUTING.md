@@ -1,9 +1,9 @@
 # Contributing
 
-This repository is a learning lab, not a production product or deployment
-template. The branch flow provides a safe way to study change promotion and
-preserve history; `main` is the stable reference line and is not a deployment
-target.
+This repository is a trucking TMS study project, not a customer-validated
+product or deployment template. The branch flow provides a safe way to study
+change promotion and preserve history; `main` is the stable reference line
+and is not a deployment target.
 
 ## Branch flow
 
@@ -45,17 +45,17 @@ the repository has one maintainer.
 ## Pull request requirements
 
 - Use a concise Conventional Commit title, for example
-  `fix(orders): preserve trace context on retry`.
+  `fix(auth): rotate refresh sessions atomically`.
 - Keep a pull request focused. Include the reason, behavior change, and
   verification evidence in its description.
 - Resolve every review conversation before merge.
 - For PRs targeting `dev`, run the relevant local checks and include their
   results; CI is temporarily not triggered for those PRs. PRs targeting
   `stage` or `main` must pass the required checks: workspace build, lint, unit
-  tests, ETL unit tests, Compose configuration, sequential image builds, the
-  six-service contract probe, and the order journey.
+  tests, Compose configuration, retained-service image builds, and the
+  retained-service contract probe.
 - Keep changes focused on a learning goal or on making the current system
-  more understandable, reliable, or verifiable. Explain the problem, the
+  more understandable, reliable, or verifiable. Explain the TMS problem, the
   chosen design, a simpler alternative, and how the result was verified.
 - Update directly affected operating guides, architecture diagrams, and
   roadmap status in the same pull request.
@@ -74,21 +74,17 @@ pnpm install --frozen-lockfile
 pnpm build
 pnpm lint
 pnpm test:unit
-pnpm etl:test
 docker compose -f infra/docker-compose.dev.yml config --quiet
-docker compose -f infra/docker-compose.dev.yml -f infra/docker-compose.e2e.yml config --quiet
 ```
 
-The CI Compose integration job additionally builds each image sequentially,
-starts the E2E dependency graph without rebuilding, probes service contracts,
-seeds the S3 mock, and runs the order journey. It is required for PRs targeting
-`stage` and `main`; see [`infra/README.md`](infra/README.md) for the local
-operator procedure.
+The CI Compose integration job additionally builds the retained images,
+starts the local foundation, and probes health, readiness, tracing headers,
+and metrics. See [`infra/README.md`](infra/README.md) for the local operator
+procedure.
 
 ## Deployment and future learning topics
 
-There is no deployment or release target. Kubernetes, GraphQL/Apollo
-Federation, RabbitMQ, AI agents, and other technologies may become future
-learning exercises, but they are not implementation commitments. Before
-adding one, document the learning objective, the simpler alternative, the
-complexity it introduces, and the evidence that will demonstrate the concept.
+There is no deployment or release target. Domain services and workflows are
+not implemented yet. Before adding a capability, document its owner, real
+operating rationale, simpler alternative, failure behavior, and evidence that
+will demonstrate the concept.

@@ -1,5 +1,5 @@
 groups:
-  - name: service-health
+  - name: tms-foundation-health
     rules:
       - alert: ApiGatewayDown
         expr: up{job="api-gateway"} == 0
@@ -7,8 +7,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: 'API gateway is not scraping successfully'
-          description: 'The API gateway target has been down for more than one minute.'
+          summary: 'TMS API gateway is unavailable'
+          description: 'The API gateway has failed Prometheus scrapes for more than one minute.'
 
       - alert: UsersServiceDown
         expr: up{job="users-service"} == 0
@@ -16,8 +16,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: 'Users service is not scraping successfully'
-          description: 'The users service target has been down for more than one minute.'
+          summary: 'TMS account-profile service is unavailable'
+          description: 'The account-profile service has failed Prometheus scrapes for more than one minute.'
 
       - alert: AuthServiceDown
         expr: up{job="auth-service"} == 0
@@ -25,71 +25,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: 'Auth service is not scraping successfully'
-          description: 'The auth service target has been down for more than one minute.'
-
-      - alert: OrdersServiceDown
-        expr: up{job="orders-service"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: 'Orders service is not scraping successfully'
-          description: 'The orders service target has been down for more than one minute.'
-
-      - alert: PaymentsServiceDown
-        expr: up{job="payments-service"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: 'Payments service is not scraping successfully'
-          description: 'The payments service target has been down for more than one minute.'
-
-      - alert: InventoryServiceDown
-        expr: up{job="inventory-service"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: 'Inventory service is not scraping successfully'
-          description: 'The inventory service target has been down for more than one minute.'
-
-      - alert: OrdersOutboxEventsFailed
-        expr: orders_service_outbox_failed_events > 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: 'Order events exhausted NATS publication attempts'
-          description: 'One or more order events are permanently failed in the NATS outbox stage.'
-
-      - alert: OrdersWorkflowDispatchFailed
-        expr: orders_service_outbox_workflow_failed_events > 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: 'Order workflow dispatch exhausted retries'
-          description: 'One or more published order events could not start a Temporal workflow after the configured retries.'
-
-      - alert: OrdersRawExportFailed
-        expr: orders_service_outbox_raw_export_failed_events > 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: 'Order raw export exhausted retries'
-          description: 'One or more order events could not be written to object storage after the configured retries.'
-
-      - alert: OrdersOutboxBacklogTooOld
-        expr: orders_service_outbox_oldest_backlog_age_seconds > 300
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: 'An order outbox delivery stage has an old backlog'
-          description: 'At least one unfinished NATS, Temporal, or raw-export event is older than five minutes.'
+          summary: 'TMS authentication service is unavailable'
+          description: 'The authentication service has failed Prometheus scrapes for more than one minute.'
 
       - alert: High5xxRate
         expr: sum by (job) (rate({__name__=~".*_http_requests_total", status_code=~"5.."}[5m])) > 0.1
@@ -97,5 +34,5 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: 'Elevated 5xx error rate observed'
-          description: 'A service is emitting a sustained 5xx rate above the configured threshold.'
+          summary: 'Elevated TMS foundation 5xx error rate'
+          description: 'A retained HTTP service is emitting a sustained 5xx rate above the configured threshold.'

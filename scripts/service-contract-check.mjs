@@ -7,19 +7,6 @@ const services = [
   { name: 'api-gateway', port: 3000, serviceName: 'api-gateway', metricPrefix: 'api_gateway' },
   { name: 'users', port: 3001, serviceName: 'users', metricPrefix: 'users_service' },
   { name: 'auth-service', port: 3002, serviceName: 'auth-service', metricPrefix: 'auth_service' },
-  { name: 'orders', port: 3003, serviceName: 'orders-service', metricPrefix: 'orders_service' },
-  {
-    name: 'payments',
-    port: 3010,
-    serviceName: 'payments-service',
-    metricPrefix: 'payments_service',
-  },
-  {
-    name: 'inventory',
-    port: 3011,
-    serviceName: 'inventory-service',
-    metricPrefix: 'inventory_service',
-  },
 ];
 
 const probe = `

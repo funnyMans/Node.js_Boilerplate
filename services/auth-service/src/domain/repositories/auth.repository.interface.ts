@@ -1,28 +1,32 @@
+import type { AuthRoleGrant } from '@app/contracts';
 import type { Credential } from '../models/credential.entity';
 import type { Session } from '../models/session.entity';
-import type { AuthRole } from '@app/contracts';
 
 export type CreateCredentialPayload = {
   userId: string;
   email: string;
   passwordHash: string;
-  role?: AuthRole;
+  roleGrants: AuthRoleGrant[];
 };
 
 export type CreateSessionPayload = {
   credentialId: string;
   userId: string;
-  role: AuthRole;
+  roleGrants: AuthRoleGrant[];
   token: string;
   refreshToken: string;
   expiresAt: Date;
   refreshExpiresAt: Date;
 };
 
+export type RotateSessionPayload = CreateSessionPayload & {
+  currentRefreshToken: string;
+};
+
 export type ActiveSession = {
   id: string;
   userId: string;
-  role: AuthRole;
+  roleGrants: AuthRoleGrant[];
   credentialId: string;
   expiresAt: Date;
   refreshExpiresAt: Date;
@@ -31,9 +35,15 @@ export type ActiveSession = {
 export interface AuthRepositoryPort {
   findCredentialByEmail(email: string): Promise<Credential | null>;
   createCredential(input: CreateCredentialPayload): Promise<Credential>;
+  replaceCredentialRoleGrants(
+    credentialId: string,
+    grants: AuthRoleGrant[],
+    passwordHash: string
+  ): Promise<Credential>;
   createSession(input: CreateSessionPayload): Promise<Session>;
+  rotateSession(input: RotateSessionPayload): Promise<Session>;
   findActiveSession(token: string): Promise<ActiveSession | null>;
   findActiveSessionByRefreshToken(refreshToken: string): Promise<ActiveSession | null>;
   revokeSession(token: string): Promise<void>;
-  revokeSessionByRefreshToken(refreshToken: string): Promise<void>;
+  revokeCredentialSessions(credentialId: string): Promise<void>;
 }
