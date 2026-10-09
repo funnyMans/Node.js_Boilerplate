@@ -10,7 +10,8 @@
     "start": "node dist/server.js",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "prisma:generate": "pnpm exec prisma generate",
-    "prisma:migrate": "pnpm exec prisma migrate dev"
+    "prisma:migrate": "pnpm exec prisma migrate dev",
+    "provision:account": "tsx src/scripts/provision-account.ts"
   },
   "dependencies": {
     "@app/common": "workspace:*",
@@ -20,8 +21,8 @@
     "@prisma/client-runtime-utils": "7.10.0",
     "dotenv": "^17.4.2",
     "fastify": "^5.12.1",
+    "jose": "^6.2.12",
     "pg": "^8.23.0",
-    "prom-client": "^15.1.3",
     "zod": "^4.5.4"
   },
   "devDependencies": {

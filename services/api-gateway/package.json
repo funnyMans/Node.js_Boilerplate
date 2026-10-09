@@ -8,14 +8,17 @@
     "prebuild": "pnpm run clean",
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
-    "test:e2e": "cd ../.. && E2E=1 pnpm exec vitest run services/api-gateway/tests/e2e/auth.e2e.test.ts"
+    "test:e2e": "cd ../.. && E2E=1 pnpm exec vitest run services/api-gateway/tests/e2e/health.test.ts"
   },
   "dependencies": {
     "@app/common": "workspace:*",
     "@app/contracts": "workspace:*",
-    "@nodejs-boilerplate/common-infra": "workspace:*",
+    "@opentelemetry/api": "^1.9.1",
     "dotenv": "^17.4.2",
     "fastify": "^5.12.1",
-    "prom-client": "^15.1.3"
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13"
   }
 }

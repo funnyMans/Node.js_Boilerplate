@@ -1,13 +1,15 @@
 services:
   postgres:
-    image: postgres:15
+    restart: unless-stopped
+    image: postgres:15.19-bookworm@sha256:539ceaaae49b3a7c8a04467cf00cc6788d8e3f1675df41860d86eebc4c40524f
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-dev}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev}
       POSTGRES_DB: app
-      POSTGRES_MULTIPLE_DATABASES: app,auth,orders,payments,inventory
+      POSTGRES_MULTIPLE_DATABASES: users,auth
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
@@ -15,243 +17,11 @@ services:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-dev} -d app']
       interval: 10s
       timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7
-    ports:
-      - '6379:6379'
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  nats:
-    image: nats:2.9-alpine
-    ports:
-      - '4222:4222'
-    healthcheck:
-      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:8222/healthz || exit 1']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  s3-mock:
-    image: nodejs-boilerplate-etl:dev
-    build:
-      context: ..
-      dockerfile: services/etl/Dockerfile
-    entrypoint: ['moto_server', '-H', '0.0.0.0', '-p', '9000']
-    ports:
-      - '9000:9000'
-    healthcheck:
-      test:
-        [
-          'CMD',
-          'python',
-          '-c',
-          "import socket; socket.create_connection(('127.0.0.1', 9000), timeout=2).close()",
-        ]
-      interval: 5s
-      timeout: 3s
       retries: 10
-
-  s3-mock-init:
-    image: nodejs-boilerplate-etl:dev
-    build:
-      context: ..
-      dockerfile: services/etl/Dockerfile
-    entrypoint: ['python', '-m', 'etl_project.init_s3_mock']
-    depends_on:
-      s3-mock:
-        condition: service_healthy
-    environment:
-      S3_ENDPOINT_URL: http://s3-mock:9000
-      AWS_ACCESS_KEY_ID: ${LOCAL_S3_ACCESS_KEY_ID:-minioadmin}
-      AWS_SECRET_ACCESS_KEY: ${LOCAL_S3_SECRET_ACCESS_KEY:-minioadmin}
-      AWS_REGION: us-east-1
-
-  # Temporal (enabled) — auto-setup image bootstraps Temporal using Postgres.
-  temporal:
-    image: temporalio/auto-setup:1.20.1
-    ports:
-      - '7233:7233'
-    environment:
-      - DB=postgres
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - POSTGRES_USER=${POSTGRES_USER:-dev}
-      - POSTGRES_PWD=${POSTGRES_PASSWORD:-dev}
-      - POSTGRES_SEEDS=postgres
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  payments:
-    restart: unless-stopped
-    stop_grace_period: 40s
-    build:
-      context: ..
-      dockerfile: services/payments/Dockerfile
-    command:
-      [
-        'sh',
-        '-c',
-        'cd services/payments && ./node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/prisma db seed && exec node dist/server.js',
-      ]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      - NODE_ENV=development
-      - PORT=3010
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@postgres:5432/payments
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_replace_with_a_real_test_key}
-      - PAYMENTS_FAKE_STRIPE=${PAYMENTS_FAKE_STRIPE:-false}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
-      - SERVICE_TO_SERVICE_TOKEN=${SERVICE_TO_SERVICE_TOKEN:-local-development-service-token-please-change-32}
-    healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'node -e "require(''http'').get(''http://127.0.0.1:3010/ready'', res => { process.exit(res.statusCode >= 200 && res.statusCode < 400 ? 0 : 1); }).on(''error'', () => process.exit(1))"',
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  inventory:
-    restart: unless-stopped
-    stop_grace_period: 40s
-    build:
-      context: ..
-      dockerfile: services/inventory/Dockerfile
-    command:
-      [
-        'sh',
-        '-c',
-        'cd services/inventory && ./node_modules/.bin/prisma migrate deploy && exec node dist/server.js',
-      ]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      - NODE_ENV=development
-      - PORT=3011
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@postgres:5432/inventory
-      - SERVICE_TO_SERVICE_TOKEN=${SERVICE_TO_SERVICE_TOKEN:-local-development-service-token-please-change-32}
-    healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'node -e "require(''http'').get(''http://127.0.0.1:3011/ready'', res => { process.exit(res.statusCode >= 200 && res.statusCode < 400 ? 0 : 1); }).on(''error'', () => process.exit(1))"',
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.78.0
-    command: ['--config=/etc/otel-config.yaml']
-    volumes:
-      - ./otel-config.yaml:/etc/otel-config.yaml:ro
-    depends_on:
-      tempo:
-        condition: service_started
-    ports:
-      - '4317:4317'
-      - '4318:4318'
-
-  tempo:
-    image: grafana/tempo:2.6.1
-    command: ['-config.file=/etc/tempo.yaml']
-    volumes:
-      - ./tempo.yaml:/etc/tempo.yaml:ro
-      - tempo-data:/var/tempo
-
-  prometheus:
-    image: prom/prometheus:v2.54.1
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --web.enable-lifecycle
-    volumes:
-      - ./prometheus:/etc/prometheus:ro
-    ports:
-      - '9090:9090'
-
-  grafana:
-    image: grafana/grafana:11.1.0
-    depends_on:
-      tempo:
-        condition: service_started
-    environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
-      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/nodejs-boilerplate-overview.json
-    ports:
-      - '3005:3000'
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
-
-  api-gateway:
-    restart: unless-stopped
-    stop_grace_period: 40s
-    build:
-      context: ..
-      dockerfile: services/api-gateway/Dockerfile
-    depends_on:
-      users:
-        condition: service_healthy
-      auth-service:
-        condition: service_healthy
-      orders:
-        condition: service_healthy
-      payments:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      nats:
-        condition: service_healthy
-      temporal:
-        condition: service_started
-      s3-mock-init:
-        condition: service_completed_successfully
-    environment:
-      - NODE_ENV=development
-      - PORT=3000
-      - HOST=0.0.0.0
-      - USERS_SERVICE_URL=http://users:3001
-      - AUTH_SERVICE_URL=http://auth-service:3002
-      - ORDERS_SERVICE_URL=http://orders:3003
-      - PAYMENTS_SERVICE_URL=http://payments:3010
-      - SERVICE_TO_SERVICE_TOKEN=${SERVICE_TO_SERVICE_TOKEN:-local-development-service-token-please-change-32}
-      - REDIS_URL=redis://redis:6379
-      - NATS_URL=nats://nats:4222
-      - TEMPORAL_ADDRESS=temporal:7233
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
-    ports:
-      - '3000:3000'
-    healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'node -e "require(''http'').get(''http://127.0.0.1:3000/ready'', res => { process.exit(res.statusCode >= 200 && res.statusCode < 400 ? 0 : 1); }).on(''error'', () => process.exit(1))"',
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      start_period: 20s
 
   users:
     restart: unless-stopped
-    stop_grace_period: 40s
     build:
       context: ..
       dockerfile: services/users/Dockerfile
@@ -259,20 +29,17 @@ services:
       [
         'sh',
         '-c',
-        'cd services/users && ./node_modules/.bin/prisma migrate deploy && exec node dist/src/server.js',
+        'cd services/users && ./node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && exec node dist/src/server.js',
       ]
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
-      - NODE_ENV=development
-      - PORT=3001
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@postgres:5432/app
-      - REDIS_URL=redis://redis:6379
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
+      NODE_ENV: development
+      PORT: 3001
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@postgres:5432/users
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
     healthcheck:
       test:
         [
@@ -285,7 +52,6 @@ services:
 
   auth-service:
     restart: unless-stopped
-    stop_grace_period: 40s
     build:
       context: ..
       dockerfile: services/auth-service/Dockerfile
@@ -301,15 +67,15 @@ services:
       users:
         condition: service_healthy
     environment:
-      - NODE_ENV=development
-      - PORT=3002
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@postgres:5432/auth
-      - USERS_SERVICE_URL=http://users:3001
-      - AUTH_TOKEN_SECRET=${AUTH_TOKEN_SECRET:-local-development-auth-token-secret-change-me-32}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
-    ports:
-      - '3002:3002'
+      NODE_ENV: development
+      PORT: 3002
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@postgres:5432/auth
+      USERS_SERVICE_URL: http://users:3001
+      AUTH_ACCESS_TOKEN_SECRET: ${AUTH_ACCESS_TOKEN_SECRET:-local-development-access-secret-change-me-32}
+      AUTH_REFRESH_TOKEN_SECRET: ${AUTH_REFRESH_TOKEN_SECRET:-local-development-refresh-secret-change-me-32}
+      AUTH_TOKEN_HASH_SECRET: ${AUTH_TOKEN_HASH_SECRET:-local-development-hash-secret-change-me-32}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
     healthcheck:
       test:
         [
@@ -320,101 +86,106 @@ services:
       timeout: 5s
       retries: 5
 
-  orders:
+  api-gateway:
     restart: unless-stopped
-    stop_grace_period: 40s
     build:
       context: ..
-      dockerfile: services/orders/Dockerfile
-    command:
-      [
-        'sh',
-        '-c',
-        'cd services/orders && ./node_modules/.bin/prisma migrate deploy && exec node dist/server.js',
-      ]
+      dockerfile: services/api-gateway/Dockerfile
     depends_on:
-      postgres:
+      users:
         condition: service_healthy
-      nats:
+      auth-service:
         condition: service_healthy
-      temporal:
-        condition: service_started
-      payments:
-        condition: service_healthy
-      inventory:
-        condition: service_healthy
-      s3-mock-init:
-        condition: service_completed_successfully
     environment:
-      - NODE_ENV=development
-      - PORT=3003
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@postgres:5432/orders
-      - NATS_URL=nats://nats:4222
-      - TEMPORAL_ADDRESS=temporal:7233
-      - PAYMENT_SERVICE_URL=http://payments:3010
-      - INVENTORY_SERVICE_URL=http://inventory:3011
-      - SERVICE_TO_SERVICE_TOKEN=${SERVICE_TO_SERVICE_TOKEN:-local-development-service-token-please-change-32}
-      - S3_ENDPOINT_URL=http://s3-mock:9000
-      - AWS_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=${LOCAL_S3_ACCESS_KEY_ID:-minioadmin}
-      - AWS_SECRET_ACCESS_KEY=${LOCAL_S3_SECRET_ACCESS_KEY:-minioadmin}
-      - RAW_EVENTS_BUCKET=raw
-      - OUTBOX_RETENTION_DAYS=${OUTBOX_RETENTION_DAYS:-0}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
+      NODE_ENV: development
+      PORT: 3000
+      HOST: 0.0.0.0
+      USERS_SERVICE_URL: http://users:3001
+      AUTH_SERVICE_URL: http://auth-service:3002
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+    ports:
+      - '127.0.0.1:3000:3000'
     healthcheck:
       test:
         [
           'CMD-SHELL',
-          'node -e "require(''http'').get(''http://127.0.0.1:3003/ready'', res => { process.exit(res.statusCode >= 200 && res.statusCode < 400 ? 0 : 1); }).on(''error'', () => process.exit(1))"',
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  dagster:
-    image: nodejs-boilerplate-etl:dev
-    build:
-      context: ..
-      dockerfile: services/etl/Dockerfile
-    depends_on:
-      s3-mock-init:
-        condition: service_completed_successfully
-    environment:
-      DAGSTER_HOME: /opt/dagster/dagster_home
-      S3_ENDPOINT_URL: http://s3-mock:9000
-      AWS_ACCESS_KEY_ID: ${LOCAL_S3_ACCESS_KEY_ID:-minioadmin}
-      AWS_SECRET_ACCESS_KEY: ${LOCAL_S3_SECRET_ACCESS_KEY:-minioadmin}
-      AWS_REGION: us-east-1
-    ports:
-      - '3004:3000'
-    volumes:
-      - dagster-home:/opt/dagster/dagster_home
-    healthcheck:
-      test:
-        [
-          'CMD',
-          'python',
-          '-c',
-          "import socket; socket.create_connection(('127.0.0.1', 3000), timeout=2).close()",
+          'node -e "require(''http'').get(''http://127.0.0.1:3000/ready'', res => { process.exit(res.statusCode >= 200 && res.statusCode < 400 ? 0 : 1); }).on(''error'', () => process.exit(1))"',
         ]
       interval: 10s
       timeout: 5s
       retries: 5
 
   nginx:
+    restart: unless-stopped
     image: nginx:1.25-alpine
     ports:
-      - '8080:80'
+      - '127.0.0.1:8080:80'
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
     depends_on:
       api-gateway:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:80/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  tempo:
+    restart: unless-stopped
+    image: grafana/tempo:2.6.1
+    command: ['-config.file=/etc/tempo.yaml']
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+
+  otel-collector:
+    restart: unless-stopped
+    image: otel/opentelemetry-collector-contrib:0.78.0
+    command: ['--config=/etc/otelcol-contrib/config.yaml']
+    volumes:
+      - ./otel-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      - tempo
+
+  prometheus:
+    restart: unless-stopped
+    image: prom/prometheus:v2.54.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=2GB
+    ports:
+      - '127.0.0.1:9090:9090'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - api-gateway
+      - users
+      - auth-service
+
+  grafana:
+    restart: unless-stopped
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports:
+      - '127.0.0.1:3005:3000'
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
 
 volumes:
   pgdata:
+  prometheus-data:
   grafana-data:
-  dagster-home:
   tempo-data:

@@ -3,14 +3,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AuthClientPort } from '../../src/app/services/auth-client.interface';
 import { registerUserRoutes } from '../../src/interfaces/http/routes/users';
 
-const session = {
+const driverSession = {
   valid: true as const,
-  userId: 'user-1',
-  role: 'user' as const,
+  userId: 'person-1',
+  roleGrants: [{ role: 'in_house_driver' as const }],
   expiresAt: '2026-09-28T00:00:00.000Z',
 };
 
-describe('api gateway user routes', () => {
+describe('api gateway workforce routes', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -21,15 +21,15 @@ describe('api gateway user routes', () => {
     return server;
   }
 
-  it('does not allow users to change their own account status', async () => {
+  it('does not allow a person to change their own account status', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const server = createTestServer({ validateSession: async () => session });
+    const server = createTestServer({ validateSession: async () => driverSession });
 
     const response = await server.inject({
       method: 'PATCH',
-      url: '/users/user-1',
-      headers: { authorization: 'Bearer session-token' },
+      url: '/users/person-1',
+      headers: { authorization: 'Bearer valid-token' },
       payload: { firstName: 'Nora', status: 'active' },
     });
 
@@ -38,30 +38,27 @@ describe('api gateway user routes', () => {
     await server.close();
   });
 
-  it('forwards profile updates without allowing extra status fields', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ id: 'user-1', firstName: 'Nora' }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    );
+  it('forwards a self-service profile update', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ id: 'person-1', firstName: 'Nora' }));
     vi.stubGlobal('fetch', fetchMock);
-    const server = createTestServer({ validateSession: async () => session });
+    const server = createTestServer({ validateSession: async () => driverSession });
 
     const response = await server.inject({
       method: 'PATCH',
-      url: '/users/user-1',
-      headers: { authorization: 'Bearer session-token' },
+      url: '/users/person-1',
+      headers: { authorization: 'Bearer valid-token' },
       payload: { firstName: 'Nora' },
     });
 
     expect(response.statusCode).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://users.internal:3001/users/user-1',
+      'http://users.internal:3001/users/person-1',
       expect.objectContaining({
         body: JSON.stringify({ firstName: 'Nora' }),
         headers: expect.objectContaining({
-          'x-authenticated-user-id': 'user-1',
+          'x-authenticated-user-id': 'person-1',
           'x-correlation-id': expect.any(String),
         }),
       })
@@ -69,35 +66,46 @@ describe('api gateway user routes', () => {
     await server.close();
   });
 
-  it.each(['blocked', 'active'] as const)(
-    'allows an admin to change user status to %s',
-    async (status) => {
-      const fetchMock = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ id: 'user-2', status }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      );
-      vi.stubGlobal('fetch', fetchMock);
-      const adminSession = { ...session, role: 'admin' as const };
-      const server = createTestServer({ validateSession: async () => adminSession });
+  it('allows a company-wide executive to access another profile', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ id: 'person/extra' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const executiveSession = {
+      ...driverSession,
+      roleGrants: [{ role: 'transportation_executive' as const }],
+    };
+    const server = createTestServer({ validateSession: async () => executiveSession });
 
-      const response = await server.inject({
-        method: 'PATCH',
-        url: '/users/user-2',
-        headers: { authorization: 'Bearer test-token' },
-        payload: { status },
-      });
+    const response = await server.inject({
+      method: 'GET',
+      url: '/users/person%2Fextra',
+      headers: { authorization: 'Bearer valid-token' },
+    });
 
-      expect(response.statusCode).toBe(200);
-      expect(fetchMock).toHaveBeenCalledWith(
-        'http://users.internal:3001/users/user-2',
-        expect.objectContaining({
-          method: 'PATCH',
-          body: JSON.stringify({ status }),
-        })
-      );
-      await server.close();
-    }
-  );
+    expect(response.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://users.internal:3001/users/person%2Fextra',
+      expect.any(Object)
+    );
+    await server.close();
+  });
+
+  it('does not treat an area supervisor grant as company-wide workforce access', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const areaSupervisor = {
+      ...driverSession,
+      roleGrants: [{ role: 'area_supervisor' as const, area: 'la' as const }],
+    };
+    const server = createTestServer({ validateSession: async () => areaSupervisor });
+
+    const response = await server.inject({
+      method: 'GET',
+      url: '/users',
+      headers: { authorization: 'Bearer valid-token' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await server.close();
+  });
 });

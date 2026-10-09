@@ -1,9 +1,0 @@
-stateDiagram-v2
-  [*] --> Payment
-  Payment --> Cancelled: declined
-  Payment --> ReserveInventory: charged
-  ReserveInventory --> Confirmed: reserved
-  ReserveInventory --> Refund: unavailable
-  Refund --> Cancelled: refund succeeded
-  Confirmed --> [*]
-  Cancelled --> [*]

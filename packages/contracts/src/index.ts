@@ -1,89 +1,29 @@
 export const userStatuses = ['active', 'blocked', 'deleted'] as const;
-
 export type UserStatus = (typeof userStatuses)[number];
 
-export type EventEnvelope<TPayload> = {
-  eventId: string;
-  eventType: string;
-  sourceService: string;
-  version: number;
-  occurredAt: string;
-  correlationId: string;
-  causationId?: string;
-  traceId?: string;
-  retryable: boolean;
-  payload: TPayload;
-};
+export const authRoles = [
+  'transportation_executive',
+  'chief_supervisor',
+  'area_supervisor',
+  'broker',
+  'outer_fleet_broker',
+  'fleet_dispatcher',
+  'contract_capacity_dispatcher',
+  'in_house_driver',
+  'contracted_driver',
+  'customer_contact',
+  'outside_carrier_contact',
+  'outer_fleet_supervisor',
+] as const;
+export type AuthRole = (typeof authRoles)[number];
 
-export function createDomainEvent<TPayload>(params: {
-  eventType: string;
-  sourceService: string;
-  correlationId: string;
-  payload: TPayload;
-  causationId?: string;
-  traceId?: string;
-  retryable?: boolean;
-  version?: number;
-}): EventEnvelope<TPayload> {
-  return {
-    eventId: crypto.randomUUID(),
-    eventType: params.eventType,
-    sourceService: params.sourceService,
-    version: params.version ?? 1,
-    occurredAt: new Date().toISOString(),
-    correlationId: params.correlationId,
-    causationId: params.causationId,
-    traceId: params.traceId,
-    retryable: params.retryable ?? false,
-    payload: params.payload,
-  };
-}
+export const companyAreas = ['la', 'west', 'central', 'east'] as const;
+export type CompanyArea = (typeof companyAreas)[number];
 
-export type UserCreatedEvent = EventEnvelope<{
-  userId: string;
-  email: string;
-  status: UserStatus;
-}>;
-
-export const orderStatuses = ['pending', 'confirmed', 'cancelled', 'fulfilled'] as const;
-export type OrderStatus = (typeof orderStatuses)[number];
-
-export type OrderItemDto = {
-  productId: string;
-  quantity: number;
-};
-
-export type CreateOrderRequest = {
-  items: OrderItemDto[];
-};
-
-export type OrderDto = {
-  id: string;
-  userId: string;
-  status: OrderStatus;
-  items: OrderItemDto[];
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type OrderCreatedEvent = EventEnvelope<{
-  orderId: string;
-  userId: string;
-  items: OrderItemDto[];
-}>;
-
-export type SessionCreatedEvent = EventEnvelope<{
-  sessionId: string;
-  userId: string;
+export type AuthRoleGrant = {
   role: AuthRole;
-  expiresAt: string;
-}>;
-
-export type SessionRevokedEvent = EventEnvelope<{
-  sessionId: string;
-  userId: string;
-  reason: 'logout' | 'refresh-reuse' | 'admin-revoked';
-}>;
+  area?: CompanyArea;
+};
 
 export type UserDto = {
   id: string;
@@ -145,52 +85,29 @@ export type ForbiddenError = AppErrorShape & {
   code: 'FORBIDDEN';
 };
 
-export type RegisterAccountRequest = {
-  email: string;
-  password: string;
-};
-
 export type LoginRequest = {
   email: string;
   password: string;
 };
 
-export type AuthAccountResponse = {
-  userId: string;
-  email: string;
-};
-
-export const authRoles = ['user', 'admin'] as const;
-export type AuthRole = (typeof authRoles)[number];
-
 export type AuthTokenResponse = {
   accessToken: string;
   refreshToken: string;
   userId: string;
-  role: AuthRole;
+  roleGrants: AuthRoleGrant[];
   expiresAt: string;
+  refreshExpiresAt: string;
 };
 
 export type AuthSessionResponse = {
   valid: true;
   userId: string;
-  role: AuthRole;
+  roleGrants: AuthRoleGrant[];
   expiresAt: string;
 };
 
-export type AuthErrorCode =
-  | 'INVALID_CREDENTIALS'
-  | 'INVALID_SESSION'
-  | 'AUTH_SERVICE_UNAVAILABLE'
-  | 'CREDENTIALS_ALREADY_EXIST';
+export type AuthErrorCode = 'INVALID_CREDENTIALS' | 'INVALID_SESSION' | 'AUTH_SERVICE_UNAVAILABLE';
 
 export type AuthErrorShape = AppErrorShape & {
   code: AuthErrorCode;
 };
-
-export const eventTypes = {
-  userCreated: 'user.created.v1',
-  orderCreated: 'order.created.v1',
-  sessionCreated: 'session.created.v1',
-  sessionRevoked: 'session.revoked.v1',
-} as const;

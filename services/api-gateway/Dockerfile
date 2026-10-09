@@ -9,7 +9,6 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json turbo.json ./
 # Copy workspace package.json files into their expected paths (preserve structure)
 COPY packages/common/package.json packages/common/package.json
-COPY packages/common-infra/package.json packages/common-infra/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 
 # Copy this service package.json
@@ -20,7 +19,6 @@ RUN pnpm install --frozen-lockfile
 
 # Copy package sources required for builds
 COPY packages/common ./packages/common
-COPY packages/common-infra ./packages/common-infra
 COPY packages/contracts ./packages/contracts
 
 # Copy remaining service sources after install to leverage cache for local edits

@@ -1,34 +1,59 @@
-# Contracts & Schemas
+# TMS service contracts
 
-Location: `packages/contracts/`
+The Load, Dispatch, and Execution services are the TMS domain owners. Their
+contracts represent business decisions and facts, not a shared database
+schema. Validate every request at the receiving service; a TypeScript type
+does not validate runtime data.
 
-Principles
+## Contract ownership
 
-- Single source of truth: Zod schemas in `packages/contracts` drive validation, OpenAPI generation, test fixtures, and event schemas.
-- Event envelope: `{ eventId, eventType, sourceService, version, occurredAt, correlationId, payload }`; `causationId` and `traceId` are optional.
-- Subject naming: `<service>.<entity>.<action>` (e.g., `orders.order.created`).
+- Load defines the ready-load commands and queries, requirements, and
+  revision history.
+- Dispatch defines capacity proposals, assignment authorization, and
+  assignment-state transitions.
+- Execution defines progress facts, exception handoffs, evidence, completion,
+  and correction records.
+- Identity defines authenticated principals and role grants. A caller's
+  grants are authorization inputs; each owning service still checks the
+  resource-specific authority and state transition.
+- `packages/contracts` may hold stable transport types and schemas used at
+  multiple boundaries. Do not move domain policy there merely to share it.
 
-Implemented order contracts:
+## Cross-service guarantees
 
-- `CreateOrderRequest` accepts product IDs and positive quantities; price is never trusted from the client.
-- `OrderCreatedEvent` uses the shared event envelope and is persisted to the orders outbox in the same transaction as the order.
-- NATS subject: `orders.order.created`; event type: `order.created.v1`.
-- The orders outbox exporter writes this unchanged event envelope as one JSONL record per S3 object under `raw/orders/created_date={UTC date}/events/`. Object keys are based on the outbox UUID so retries safely overwrite the same object.
+Before implementing an assignment request, define:
 
-Example Zod schemas (store in `packages/contracts/src/*.ts`)
+- Stable load, assignment, capacity, and execution identifiers.
+- The exact authorization and load-readiness checks.
+- The response if Dispatch persists an assignment but Execution cannot
+  create its execution record.
+- Idempotency behavior for retried commands and duplicate delivery.
+- How pending/failed work is inspected, retried, and reconciled.
+- Which service owns each state transition and customer-safe projection.
 
-- `UserSchema`
-- `ProductSchema`
-- `OrderSchema`, `OrderItemSchema`
-- `PaymentSchema`
-- Event schemas: `OrderCreatedEvent`, `PaymentSucceededEvent`, etc.
+Do not report a fully active assignment until the defined cross-service
+invariants hold. Do not use distributed transactions. Select HTTP, events,
+or both only after those semantics are explicit.
 
-Versioning & compatibility
+## Event envelope (when durable events are justified)
 
-- Event `version` field required.
-- Backward-compatibility policy: additive changes allowed; breaking changes require version bump and contract test.
-- CI must run schema compatibility tests (consumer vs producer fixtures).
+Use a versioned, validated event envelope with:
 
-Generation
+`eventId`, `eventType`, `sourceService`, `version`, `occurredAt`,
+`correlationId`, optional `causationId`, and a typed `payload`.
 
-- Use `zod-to-openapi` or custom script to export JSON Schema/OpenAPI pieces.
+Events state facts that happened; commands request an owner to perform work.
+Assume duplicate and delayed delivery. Consumers must validate, be
+idempotent, expose failures, and define ordering and replay behavior. Do not
+add an event broker before the workflow needs durable asynchronous delivery.
+
+## Evolution
+
+Additive, backward-compatible contract changes may retain a version only
+when old receivers can safely accept them. Breaking changes require a new
+version and compatibility tests. Runtime parsing belongs at each receiver,
+even when producers and consumers share generated types.
+
+The complete first-slice API/event contract is a gate in the
+[development roadmap](./README_NEXT_STEPS.md); this note intentionally does
+not invent endpoint or event names before domain states are settled.
