@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      DATABASE_URL: ******127.0.0.1:5432/app
+      DATABASE_URL: 'postgresql://dev:dev@127.0.0.1:5432/app'
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
