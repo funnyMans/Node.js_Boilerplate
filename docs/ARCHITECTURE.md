@@ -10,11 +10,11 @@ implemented; repository/runtime status is tracked in the
 
 The product is divided into three deliberately selected domain services:
 
-| Service | Owns | Authority |
-| --- | --- | --- |
-| **Load** | Ready transportation commitments, requirements and revisions, and any deliberately customer-safe load status projection | Source of truth for what work was committed and the requirements to fulfill it |
-| **Dispatch** | Capacity proposals, assignment decisions and authorization history | Source of truth for who may authorize the capacity assigned to a load |
-| **Execution** | Assigned movement, progress, exceptions, evidence, completion, and corrections | Source of truth for operational facts and delivery evidence |
+| Service       | Owns                                                                                                                    | Authority                                                                      |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Load**      | Ready transportation commitments, requirements and revisions, and any deliberately customer-safe load status projection | Source of truth for what work was committed and the requirements to fulfill it |
+| **Dispatch**  | Capacity proposals, assignment decisions and authorization history                                                      | Source of truth for who may authorize the capacity assigned to a load          |
+| **Execution** | Assigned movement, progress, exceptions, evidence, completion, and corrections                                          | Source of truth for operational facts and delivery evidence                    |
 
 Identity and workforce accounts own credentials and multi-role grants with
 optional area scope. A grant does not by itself authorize access to every
@@ -44,6 +44,11 @@ Select direct API calls, durable events, or a combination after defining
 consistency, latency, recovery, and operator requirements. The assignment
 handoff must make pending and failed states visible, prevent duplicate
 executions, and provide safe retry/reconciliation.
+
+The full staged business and technical vision is in the
+[capability-ring system vision](./trucking/SYSTEM_VISION.md); the
+[core-workflow design](./trucking/CORE_WORKFLOW.md) specifies the intended
+first-slice sequence, logical data ownership, and handoff behavior.
 
 ## Assignment and automation
 
@@ -88,4 +93,6 @@ capabilities or the engineering practices needed to test them.
 
 For the company structure and flow, see the
 [vision](./trucking/VISION.md), [responsibilities](./trucking/RESPONSIBILITIES.md),
-[workflow](./trucking/WORKFLOW.md), and [first-slice charter](./trucking/MVP_START.md).
+[workflow](./trucking/WORKFLOW.md), [first-slice charter](./trucking/MVP_START.md),
+[system vision](./trucking/SYSTEM_VISION.md), and
+[core workflow](./trucking/CORE_WORKFLOW.md).

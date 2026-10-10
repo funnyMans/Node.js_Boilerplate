@@ -8,11 +8,16 @@ product slice is bounded; it is not a plan to build a complete TMS at once.
 
 Start with these product documents:
 
-1. [First-slice charter](./MVP_START.md): what, when, where, why, how, what
+1. [System vision and capability rings](./SYSTEM_VISION.md): the business
+   destination, staged capability layers, and technical production envelope.
+2. [Core workflow, contracts, and logical schema](./CORE_WORKFLOW.md): exact
+   first-slice transitions, service interactions, ownership, and failure
+   behavior.
+3. [First-slice charter](./MVP_START.md): what, when, where, why, how, what
    to do, and what not to do.
-2. [Target architecture](./MVP_ARCHITECTURE.md): the selected Load, Dispatch,
+4. [Target architecture](./MVP_ARCHITECTURE.md): the selected Load, Dispatch,
    and Execution service boundaries and their relationships.
-3. [Vision and boundaries](./VISION.md): the product purpose, company model,
+5. [Vision and boundaries](./VISION.md): the product purpose, company model,
    and scope exclusions.
 
 The broader domain references remain useful, but are hypotheses rather than
