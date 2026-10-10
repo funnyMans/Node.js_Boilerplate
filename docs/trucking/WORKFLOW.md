@@ -14,25 +14,46 @@ choices that may be implemented only after the relevant data, authority,
 constraints, and tests are defined. This lifecycle describes business
 handoffs, not a requirement for one service, database, or event per step.
 See the [first-slice charter](./MVP_START.md), [target architecture](./MVP_ARCHITECTURE.md),
-and [company role model](./RESPONSIBILITIES.md).
+the [core workflow and logical schema](./CORE_WORKFLOW.md), the
+[capability-ring vision](./SYSTEM_VISION.md), and [company role model](./RESPONSIBILITIES.md).
 
 ## The basic path
 
 ```mermaid
 flowchart TD
-    Request["Customer request / offer"] --> Broker["Broker checks instructions,<br/>serviceability and options"]
-    Broker -->|Decline or clarify| Close["Decline / return for correction"]
-    Broker -->|Accept request| Stack["Eligible load awaiting capacity"]
-    Stack --> InHouse["Consider available in-house<br/>driver + suitable truck"]
-    InHouse -->|Dispatcher proposes| Supervisor["Departure-area supervisor<br/>reviews candidates"]
-    Supervisor -->|Confirm one assignment| Assigned["One authoritative assignment"]
+    Request["Customer or outside-broker<br/>load offer"] --> Broker["Broker checks requirements<br/>and commercial terms"]
+    Broker -->|Need details| Clarify["Broker requests clarification"]
+    Clarify --> Broker
+    Broker --> Decision{"Broker books the load?"}
+    Decision -->|No| Close["Decline the offer"]
+    Decision -->|Yes| Stack["Booked load awaiting capacity"]
+    Stack --> InHouse["Prior-day loads prioritized through 4 p.m.<br/>Same-day loads available all day"]
+    InHouse --> Supervisor["Supervisor reviews feasible<br/>nominations and timing"]
+    Supervisor -->|Preassign| Reserve["Dispatch atomically reserves<br/>load + driver/power unit/optional trailer"]
+    Reserve --> Notify["Dispatcher notified; trio and load<br/>shown as preassigned"]
+    Supervisor -->|Direct assignment with rationale| Finalize
+    Notify --> Challenge{"Readiness or requirement<br/>change before assignment?"}
+    Challenge -->|No| Finalize["Supervisor finalizes assignment<br/>by applicable assignment deadline"]
+    Challenge -->|Yes| Review["Supervisor reviews report/change;<br/>keep preassignment or unpreassign"]
+    Review -->|Keep| Notify
+    Review -->|Unassign with viable alternative| Stack
+    Review -->|No viable alternative| BrokerCancel
     Supervisor -->|Low-priority or unmatched load identified| OuterBroker["Dedicated outer-fleet broker<br/>leads sourcing; other brokers may help"]
     OuterBroker --> Contractor["Offer eligible managed<br/>contract capacity"]
-    Contractor -->|Accepted and beneficial| Assigned
+    Contractor -->|Accepted and beneficial| ManagedReview["Supervisor preassigns<br/>managed-capacity trio"]
+    ManagedReview --> Reserve
     Contractor -->|Declines / unavailable| Partner["Consider spot / partner carrier"]
-    Partner -->|Accepted and beneficial| Assigned
-    Partner -->|No viable option| Close
-    Assigned --> Execute["Driver or carrier executes work"]
+    Partner -->|Accepted and beneficial| PartnerReview["Supervisor preassigns<br/>partner-capacity trio"]
+    PartnerReview --> Reserve
+    Partner -->|No viable option| BrokerCancel
+    Finalize --> Assigned["One authoritative assignment"]
+    Assigned --> Changed{"Assigned capacity becomes<br/>unavailable before pickup?"}
+    Changed -->|No| Execute["Driver or carrier executes work"]
+    Changed -->|Yes| Disrupted["Record disruption; supersede assignment<br/>and release capacity when safe"]
+    Disrupted --> Viable{"Replacement can meet<br/>load constraints in time?"}
+    Viable -->|Yes| Stack
+    Viable -->|No| BrokerCancel["Broker resolves customer commitment<br/>and cancels or amends as authorized"]
+    BrokerCancel --> Canceled["Booked commitment amended or canceled"]
     Execute --> Exception{"Issue or approved change?"}
     Exception -->|Yes| Record["Dispatch records known facts<br/>on the execution"]
     Record --> Owner["Departure-area supervisor<br/>owns the operational decision"]
@@ -45,12 +66,102 @@ flowchart TD
     Exception -->|No| Complete["Record delivery / complete work"]
 ```
 
-Customer acceptance, capacity secured, and operational assignment are
-different decisions. Accepting a request does not imply capacity is secured.
-A dispatcher nomination does not reserve a load or truck; supervisor
-confirmation creates one authoritative assignment and closes competing
-nominations. If no dispatcher proposes eligible in-house capacity, the
-supervisor may assign or request a proposal.
+For every load offer, whether received directly from a customer or through
+another broker, the handling broker alone decides whether to book, clarify,
+or decline it. That decision does not require a supervisor's capacity
+review. Booking creates the commercial load commitment and starts capacity
+sourcing; capacity secured and operational assignment remain separate
+decisions. Loads booked by the previous day receive nomination priority through 4 p.m.
+local time; loads booked the same day may be nominated throughout the day.
+Supervisors work the priority queue from 4 p.m. to workday end, while
+same-day loads may be reviewed and assigned throughout the supervisor's
+workday. A load booked for next-morning pickup after the cutoff is handled
+as a direct supervisor assignment from currently available capacity. Ordinary
+loads target final assignment no later than the calendar day before pickup;
+same-booking-day pickup follows a separate emergency path whose detailed
+handling remains to be defined. Preassignment creates a separate, editable
+Reservation record and atomically claims the load and the stable driver/power-unit/optional
+single-trailer configuration for a capacity-use window, removing it from
+competing views for that window. Load and trio changes refresh the
+Reservation snapshot and history and may mark it for review. Final
+Assignment is a separate decision linked to the exact Reservation revision.
+Dispatchers are notified and can inspect or challenge the reserved status,
+but no dispatcher approval is required.
+
+For a follow-on load, the current load's BOL must be uploaded and its
+execution marked in progress before the trio can be nominated. The
+dispatcher records and verifies the trio's next-available date/time; the
+next load's pickup cannot be earlier. This supports the next operating
+window without committing a trio months ahead. A unit returning from
+repair/recovery can be nominated after driver readiness and return-to-service
+status are checked. Configuration changes are limited to the home base with
+driver agreement and must be recorded before nomination; multiple trailers
+and routine component swaps are out of scope.
+
+The supervisor may bypass nomination priority and preassignment and assign
+directly when needed. The preferred route is preassignment when time allows,
+so the dispatcher can report off-system facts the supervisor may not know.
+Direct assignment records the rationale and must still pass the same
+eligibility, load-uniqueness, and capacity-window checks.
+The supervisor finalizes ordinary loads by the calendar day before pickup.
+This is a target, not a claim expiry. A Reservation does not expire or
+silently become an Assignment: finalization creates a distinct Assignment
+linked to its revision. The execution remains active through delivery, but
+at pickup completion Dispatch updates the occupied capacity window using
+the dispatcher-verified next availability; future reservations are allowed
+only for non-overlapping windows.
+
+### Loads approaching the day-before assignment target
+
+If an ordinary load is still unassigned as the day-before target approaches,
+record why and assign an accountable next action rather than treating every
+shortfall as the same failure:
+
+- No in-house or managed trio was available or nominated: the dedicated
+  outer-fleet broker owns the external-capacity sourcing task and its due
+  time. The area broker retains commercial ownership of the booked load.
+- Suitable trios existed but were not nominated, or nominations were stale
+  against verified availability: the dispatcher and area supervisor review
+  the planning failure and next action.
+- Viable nominations are waiting for a decision: the departure-area
+  supervisor owns the decision backlog.
+- Candidate capacity was allocated to loads with stronger company benefit,
+  leaving this load without a feasible in-house/managed match: the area
+  broker owns sourcing this load externally, with the dedicated outer-fleet
+  broker supporting within the remaining time.
+- The area booked beyond known or reasonably forecast capacity: the area
+  broker must flag the overage to the dedicated outer-fleet broker and
+  participate in finding outside capacity, rather than treating managed
+  capacity already counted in the plan as new supply.
+
+These are operational accountability categories, not automatic disciplinary
+scores. Capture nomination timing, stated availability, decision/outcome,
+reason, and assigned follow-up owner. A future participation score should
+distinguish missed or stale dispatcher action from no suitable capacity,
+supervisor backlog, or brokerage overbooking; exact scoring remains out of
+scope until these records can be tested.
+
+The proposed dispatcher participation signal may account for how many
+reasonable load/direction options were nominated, whether any were selected,
+and whether the dispatcher nominated the best remaining feasible alternatives
+when preferred work was unavailable. Preserve the owner's intent that fewer
+useful nominations or repeated non-selection may lower the signal, but do
+not reward infeasible or duplicate spam. Record why a nomination was not
+selected (for example, a supervisor chose stronger company benefit or a
+competing trio/load won) so the eventual score can distinguish dispatcher
+participation from supervisor and company-capacity outcomes. It is not a
+Ring 1 automated ranking formula.
+
+If assigned capacity becomes unavailable before movement starts, preserve and
+supersede the prior assignment rather than silently reusing it. Return the
+booked load to capacity sourcing only after the prior assignment is terminal
+as no-start and its claim is closed. Reassign when another option can meet
+the load's timing and requirements; otherwise the broker handles the
+customer-facing amendment or cancellation under the applicable agreement.
+Closing a claim does not by itself establish driver rest, equipment
+serviceability, or general availability. Once movement has begun, handle
+capacity failure as an execution exception rather than automatically putting
+the load back in the pre-execution queue.
 
 The assignment policy is intentionally human-authorized. Drivers can state
 their preferences and readiness; dispatchers contribute operational
@@ -66,11 +177,12 @@ slice:
 1. Capture explicit capacity, driver, dispatcher, and company-priority data.
 2. Validate eligibility and assignment invariants; show feasible candidates
    and the reasons they rank as they do.
-3. Let the supervisor approve or override a proposed assignment with a
-   recorded rationale. Approval must atomically stop the assigned truck
-   from appearing as available for competing assignments.
-4. Evaluate one-click approval and preassignment against operational
-   scenarios and measured outcomes.
+3. Let the supervisor choose among nominations and record a rationale.
+   Preassignment must atomically stop the load and trio from appearing as
+   available for competing work.
+4. Evaluate one-click approval and automated matching against operational
+   scenarios and measured outcomes. Daily human preassignment is already
+   part of Ring 1.
 5. Consider automatic assignment only after objectives, constraints,
    employee-priority treatment, overrides, and safeguards are explicit and
    tested. An automated recommendation must not silently become authority.
@@ -81,7 +193,7 @@ slice:
 flowchart TD
     Freight["Freight<br/>goods being moved"] --> Load["Load<br/>commercial request + requirements"]
     Load --> Execution["Transport execution<br/>confirmed capacity + operational events"]
-    Execution --> Assignment["Confirmed capacity<br/>driver + power unit + trailer(s)"]
+    Execution --> Assignment["Confirmed capacity<br/>driver + power unit + optional single trailer"]
     Assignment --> Trip["Driver trip / itinerary<br/>one-way or round trip"]
     Trip --> Events["Pickup, movement, delivery,<br/>incidents, required evidence"]
     Events --> Availability["Driver next availability<br/>including chosen rest"]
@@ -125,18 +237,13 @@ round-trip, even if another pickup occurs on the return and the vehicle
 enters another area. Validate exact boundaries and commercial treatment
 later.
 
-An in-house broker's booking means the customer-side work is booked and
-capacity must be sourced; it does not itself assign or make a carrier-side
-commitment. For a load offered by an outside broker/customer, the area
-supervisor decides whether the company's transportation operation accepts
-it. Once accepted by the company, a broker remains responsible for customer
-support and communication, regardless of who originated the load.
-
-The broker's acceptance of the customer's commercial offer and the company's
-decision to commit transportation capacity are separate decisions. For
-in-house brokerage, booking starts capacity sourcing; for an external offer,
-the supervisor makes the carrier-side acceptance decision after load
-readiness is established.
+The handling broker alone decides whether to book, clarify, or decline every
+customer load offer, including offers received through an outside broker.
+This commercial decision does not require supervisor approval or a capacity
+review. Booking establishes the customer
+commitment and starts capacity sourcing; it does not itself secure capacity
+or create an operational assignment. Supervisors decide how to assign
+capacity to a booked load, not whether to accept its offer.
 
 When a load is booked, the system calculates a managed-carrier offer from the
 booked customer rate using a contract-approved percentage within that
@@ -159,25 +266,35 @@ change the rate after the carrier has ranked the previous offer.
 
 ```mermaid
 flowchart TD
-    Offer["Broker discusses offer<br/>and checks requirements"] --> Complete{"Required details complete?"}
-    Complete -->|No| Clarify["Ask customer to clarify<br/>or provide missing details"]
+    Offer["Broker reviews customer or<br/>outside-broker offer"] --> Complete{"Requirements clear<br/>and serviceable?"}
+    Complete -->|No| Clarify["Broker asks for clarification"]
     Clarify --> Offer
-    Complete -->|Yes| Ready["Load details ready<br/>for transportation"]
-    Ready --> Accepted{"Company transportation<br/>accepts the work?"}
-    Accepted -->|No| Declined["Do not create an active<br/>transport commitment"]
-    Accepted -->|Yes / already booked<br/>by in-house brokerage| Queue["Load available for capacity planning"]
+    Complete -->|Yes| Book{"Broker books the offer?"}
+    Book -->|No| Declined["No customer commitment;<br/>offer declined"]
+    Book -->|Yes| Ready["Booked load ready<br/>for capacity sourcing"]
+    Ready --> Queue["Load available for capacity planning"]
     Queue --> Rate["Calculate provisional managed-carrier rate;<br/>booking broker confirms or updates"]
-    Rate --> Plan["System ranks feasible loads<br/>for in-house and managed capacity"]
-    Plan --> DispatchReview["In-house dispatchers confirm/rerank;<br/>managed dispatch marks only<br/>carrier-ready loads"]
-    DispatchReview -->|In-house candidate| Preconfirm["Supervisor preconfirms<br/>best feasible match"]
-    Preconfirm --> Confirm["Supervisor confirms assignment<br/>before timing risk is too high"]
-    Confirm --> AssignmentCheck["In-house dispatcher checks<br/>confirmed assignment"]
-    AssignmentCheck -->|Accept| ReadyExec["Driver, power unit and trailer(s)<br/>are identified and ready"]
-    AssignmentCheck -->|Challenge with reason| Revisit["Supervisor reviews and<br/>confirms or changes plan"]
-    Revisit --> AssignmentCheck
-    DispatchReview -->|Managed candidate| ManagedConfirm["Supervisor directly confirms<br/>accepted managed offer;<br/>no preconfirmation"]
-    ManagedConfirm --> ReadyExec
-    ReadyExec --> Pickup["Device confirms pickup arrival"]
+    Rate --> Plan["Review available loads and<br/>eligible capacity facts"]
+    Plan --> DispatchReview["Dispatchers nominate load/trio<br/>preferences; managed dispatch<br/>marks carrier-ready loads"]
+    DispatchReview -->|In-house candidate| Nominate["Dispatcher nominates load/trio<br/>in applicable priority window"]
+    Nominate --> Preassign["Supervisor preassigns when time allows;<br/>Dispatch atomically reserves load + window"]
+    Nominate --> DirectAssign["Supervisor may directly assign<br/>with recorded rationale"]
+    Preassign --> Notify["Dispatcher notified; preassigned<br/>load/trio visible in status"]
+    Notify --> Challenge{"Readiness or requirement<br/>change before assignment?"}
+    Challenge -->|No| Confirm["Supervisor finalizes assignment<br/>by applicable timing target"]
+    Challenge -->|Yes| Review["Supervisor reviews and keeps<br/>reservation or unpreassigns"]
+    Review -->|Unassign with viable alternative| Queue
+    Review -->|No viable alternative| Cancel
+    DispatchReview -->|Managed candidate| ManagedConfirm["Supervisor preassigns<br/>accepted managed-capacity trio"]
+    ManagedConfirm --> Notify
+    DirectAssign --> Confirm
+    Confirm --> ReadyExec["Driver, power unit and optional trailer<br/>are identified and ready"]
+    ReadyExec --> AvailabilityChange{"Capacity becomes unavailable<br/>before pickup?"}
+    AvailabilityChange -->|No| Pickup["Device confirms pickup arrival"]
+    AvailabilityChange -->|Yes| Disruption["Record disruption; supersede<br/>assignment and safely release capacity"]
+    Disruption --> Replacement{"Can replacement capacity meet<br/>timing and requirements?"}
+    Replacement -->|Yes| Queue
+    Replacement -->|No| Cancel["Broker handles customer-facing<br/>amendment or cancellation"]
     Pickup --> InTransit["BOL uploaded;<br/>execution is in progress"]
     InTransit --> Delivery["Device confirms delivery arrival"]
     Delivery --> POD["POD uploaded"]
@@ -185,24 +302,63 @@ flowchart TD
     Close --> Availability["Equipment and driver availability<br/>reassessed; driver rest respected"]
 ```
 
-The successful case means the company accepts only work it intends to
-service; every active load has one accountable supervisor and one
-authoritative capacity assignment; required pickup and delivery records are
-captured; and the driver is not assumed available again until their schedule,
-chosen rest, and equipment status support it. Customer feedback is not a
-condition of completion.
+The successful case means a broker books work the company intends to service;
+every active load has one accountable supervisor and one authoritative
+capacity configuration, reserved for its capacity-use window; required
+pickup and delivery records are captured; and
+the driver is not assumed available again until their schedule, chosen rest,
+and equipment status support it. Customer feedback is not a condition of
+completion.
 
-When the dispatcher challenges a proposed assignment, the supervisor
-resolves it before dispatch rather than treating silence as acceptance.
-The driver is notified but does not accept or confirm the load in the system.
-The dispatcher is responsible for knowing the driver's previously reported
-readiness and for ranking only feasible work.
+Prior-day loads receive nomination priority until 4 p.m. local time;
+same-day loads can be nominated throughout the day. A follow-on nomination
+requires the current load's BOL and in-progress status plus a
+dispatcher-verified next-available time. The next load's pickup cannot be
+earlier than that time. Reservation creates an editable planning record and
+an exclusive claim for the load and stable capacity configuration over its
+use window; load and trio changes refresh its snapshot and history and may
+require review. The dispatcher is notified and can inspect or challenge the
+Reservation but does not approve it. Final Assignment is a distinct decision
+record linked to the exact Reservation revision. The supervisor may bypass
+priority and Reservation to assign directly, with rationale. A dispatcher
+may report changed readiness, and the supervisor may retain or close the
+Reservation. Every closure needs a structured reason and dispatcher-verified
+component status/next availability. If the trio's condition is unknown, do
+not treat claim closure as availability. The execution record continues
+through delivery, while verified availability updates the capacity-use
+window for future non-overlapping work.
 
-For loads requiring a return toward LA, the next feasible load can be
-planned before the current execution ends. This is especially important
-before a driver reaches the prior destination. Planning/preconfirmation is
-not a requirement that the driver continue working: protected rest remains
-the driver's choice and must be respected.
+A delay or new driver/equipment issue can move the verified next-available
+time past a future reservation's planned pickup. Treat that as a schedule
+conflict, not as permission to move either load silently: notify the
+dispatcher and accountable supervisor, reassess the affected windows in
+pickup-time order, and explicitly unassign or operationally resolve work
+before changing claims. Once a future load is finally assigned, use its
+normal exception/reassignment path.
+
+Customer requirement changes during Reservation notify both supervisor and
+dispatcher, refresh the recorded revision, and trigger a fit/review
+assessment. The supervisor may retain or close the Reservation with a
+reasoned decision. After final Assignment, reassess the trio against revised
+requirements and remaining time. If it no longer fits before movement,
+confirm `no_start` before safely releasing it, seek a replacement, then
+outside capacity, and finally broker-led cancellation/amendment if needed.
+Record the original trio's readiness, release and next-available times,
+repositioning/deadhead, idle time, and execution milestone. If movement has
+begun, handle the change as an Execution exception and do not treat the trio
+as immediately available. The broker reviews evidence and contract terms
+for possible customer claims; the system does not infer legal entitlement or
+automatically charge. The driver is notified but does not accept or confirm
+the load in the system.
+
+For a load picked up in LA that is expected to return toward home, begin
+ranking and nominating feasible return-home loads as soon as the pickup BOL
+is uploaded and execution is in progress, even while the outbound load is
+still moving. The next pickup must respect the dispatcher's verified
+next-available time. This is especially important before a driver reaches
+the prior destination. Planning/Reservation is not a requirement that the
+driver continue working: protected rest remains the driver's choice and
+must be respected.
 
 The load and execution close automatically when the POD is received. The
 execution is immutable after closure and cannot be reopened. The closed load
@@ -298,12 +454,15 @@ Availability has two distinct parts:
   off. An unexpected absence removes the driver from new capacity planning
   and follows the applicable exception process.
 
-These checks happen at different times: declared readiness informs
-pre-assignment planning; technical eligibility is checked again after the
-prior delivery. If a driver's health or readiness changes unexpectedly,
-dispatch records the change, the supervisor coordinates the operational
-response, and the broker keeps the customer informed. Finding replacement
-capacity or changing the commitment belongs to the later exception workflow.
+These checks happen at different times: declared readiness informs daily
+dispatcher nominations; the supervisor reviews the latest known capacity
+state when preassigning and finalizing; technical eligibility is checked
+again after the prior delivery. If a driver's health or readiness changes
+unexpectedly, dispatch records the change and the supervisor coordinates
+operational replanning. For a load not yet in execution, return it to
+sourcing when a replacement can meet its constraints; otherwise the broker
+handles any customer-facing commitment change or cancellation. Changes
+after movement begins follow the execution exception workflow.
 The dispatcher team covers a dispatcher who is off; no load assignment
 depends on an off-duty dispatcher being available.
 
@@ -329,41 +488,37 @@ Keep two outer-capacity paths distinct:
   be considered for future loads. The carrier remains contract capacity, not
   in-house fleet.
 
-The system identifies and ranks feasible load matches for each in-house
-driver/truck; their dispatcher confirms or reranks the list using relevant
-driver/team knowledge. It applies the same matching to managed trucks, but
-the dedicated dispatcher removes any load the carrier is not ready to haul
-at its confirmed offer. The agreement determines each carrier's permitted
-percentage range. Later, evidence and analytics may support a load-specific
-offer algorithm; for now, use a simple configured default, confirmed by the
-booking broker. Including a load in a managed carrier's ranked list means
-the carrier accepts that exact offer for the load: if the supervisor
-assigns it, the rate is settled and is not negotiated again unless a new
-authorized emergency offer is issued and accepted. The supervisor
-compares the remaining managed candidates with in-house matches, preferring
-in-house when the company-benefit difference is small but allowing a clearly
-superior managed match—or one with no suitable competing in-house truck—to
-win. For now, the supervisor decides whether the difference is small. Later,
-evidence and analytics may recommend or apply the trade-off using the exact
-load's priorities—such as financial return, time, or area presence—instead
-of a general threshold.
-
-System match ranking is guidance, not an absolute eligibility boundary for
-supervisors. A supervisor may manually assign an otherwise eligible managed
-carrier who is not on the current best-match list, including after delivery
-when normal ranking would not surface that carrier. Availability,
+Future matching assistance may identify and rank feasible load matches for
+in-house drivers/trucks and managed carriers. It is not part of the Ring 1
+manual nomination flow. When introduced, dispatchers should be able to
+review or rerank suggestions using relevant driver/team knowledge; managed
+dispatchers must exclude any load the carrier is not ready to haul at its
+confirmed offer. The agreement determines each carrier's permitted
+percentage range. A later rate algorithm may use evidence and analytics;
+until then, a configured default must be confirmed by the booking broker.
+Any managed-carrier offer that is treated as acceptance of a settled rate
+must state that condition explicitly before ranking or supervisor selection.
+The departure-area supervisor retains authority to choose among feasible
+in-house and managed candidates based on company benefit. Availability,
 qualification, equipment fit, contractual readiness, and customer timing
-remain hard constraints. Record each manual selection with the supervisor,
-reason, and relevant load/assignment revision so the decision can be
-reviewed.
+remain hard constraints. Record the supervisor's decision, rationale, and
+relevant load/assignment revision.
 
-Managed offers skip in-house preconfirmation. The departure-area supervisor
-retains final assignment authority; after a managed carrier accepts and its
-assignment is confirmed, do not swap the carrier or load as ordinary
-optimization. If a carrier completes delivery without a confirmed next
-assignment, its dispatcher must return it to the candidate pool before
-normal ranking resumes; a supervisor may still make a reasoned manual
-selection under the override rule above.
+Managed capacity follows the same Reservation boundary: once accepted as a
+candidate, the supervisor creates a Reservation and Dispatch atomically
+claims the load and trio window. Its dispatcher is notified and may report
+changed readiness, but does not approve the Reservation. The
+departure-area supervisor retains final Assignment authority; after a
+managed carrier is finally
+assigned, do not swap the carrier or load as ordinary optimization. A
+genuine readiness change is an exception: record it, safely unassign/release
+the old claim, and re-source the still-booked load when a replacement can
+meet its constraints. If movement has begun, use the execution exception
+workflow rather than automatically
+re-queueing it. If a carrier completes delivery without a confirmed next
+assignment, its dispatcher must return it to the candidate pool before normal
+ranking resumes; a supervisor may still make a reasoned manual selection
+under the override rule above.
 
 ## Dedicated outer-fleet sourcing
 
@@ -471,56 +626,35 @@ rule remain to be defined.
 
 ## Daily preassignment stages
 
-Run preassignment daily for both homebound and outbound loads, with the
-greatest emphasis on outbound loads from the company's LA home area.
-Homebound matching focuses
-more on technical fit and progress toward home; outbound matching also
-balances drivers' destination preferences.
+Every day, dispatchers may nominate loads for each available driver/truck/
+trailer trio. A trio becomes eligible for nomination when its prior
+pickup/movement cycle makes it available or when it returns to service after
+repair/recovery. Nominations are open until 4:00 p.m. in the applicable
+operating area's local time. A dispatcher may state priorities and nominate
+the same trio for multiple loads; multiple trios may also be proposed for the
+same load. These preferences do not reserve either side.
 
-Monthly and annual recognition determines priority for the first assignment
-stage:
+From 4:00 p.m. until the supervisor's workday ends, the departure-area
+supervisor reviews nominations against hard eligibility, load requirements,
+timing, driver/dispatcher preferences, and the company's benefit for each
+load. The supervisor may create a Reservation for one load and one trio. The
+Reservation must atomically exclude that load from other trios and every
+member of the trio from overlapping capacity windows. Final Assignment is a
+separate record linked to the exact Reservation revision and maintains the
+same active claim; it does not claim capacity a second time. The dispatcher
+receives an in-app notification and can inspect or challenge the
+Reservation, but does not approve it. No automated ranking, fixed number of
+nominations, or award priority order is established for this first slice.
 
-- Safety and legal compliance are eligibility gates, not tradeable scoring
-  factors. Among eligible participants, balance service reliability,
-  communication, and company contribution. Normalize results for differences
-  in load opportunity so first-stage access does not automatically compound
-  prior awards; strong outcomes still matter.
-- Recognize the top three dispatcher teams each month and year as Gold,
-  Silver, and Bronze. Also recognize the five leading individual drivers;
-  they need not belong to a winning team.
-- Stage 1 gives first consideration to the five individual winners, then
-  proceeds through Gold, Silver, and Bronze teams. A driver who also belongs
-  to an award-ranked team is considered only once; they do not receive
-  duplicate capacity or preference claims.
-- Stage 2 opens the remaining candidate loads and trucks to the other seven
-  teams. Their dispatchers provide or update ranked load preferences and
-  compete for the remaining suitable matches.
-- Stage 3 handles still-unmatched in-house trucks and loads that have not
-  attracted a suitable match. Depending on the time remaining and expected
-  bookings, the supervisor may wait for better work or assign an
-  operationally feasible less-preferred load. Managed carriers are not
-  forced to take leftover work; they may consider remaining offers or source
-  work independently.
-
-Each team may rank up to ten preferred loads. For outbound work, the system
-may suggest loads based on that truck's prior load history, but dispatchers
-may choose any feasible load. Award priority and dispatcher rankings guide
-the supervisor; neither guarantees a preferred assignment or overrides hard
-constraints, company benefit, or customer commitments.
-
-A preassignment is a temporary exclusive reservation for one truck/load
-pair, not yet a final assignment. It prevents conflicting claims while the
-stages run and may be reconsidered before a lock cutoff. At the cutoff, the
-reservation becomes protected: it cannot be dropped through ordinary
-preference changes. A preassigned truck may compete for another upcoming
-load only when the area's unassigned trucks outnumber available loads and
-there is enough time to resolve the new choice without jeopardizing its
-reserved load.
-
-The exact award formula, stage timing, definition of "enough time," and
-reservation lock cutoff remain to be set. Safety, qualification, and
-hours-of-service rules remain hard constraints throughout; no ranking or
-reward should encourage dispatchers or drivers to exceed legal limits.
+If a capacity or customer-requirement change makes the reserved trio
+infeasible or no longer beneficial, notify the supervisor and dispatcher.
+The supervisor decides whether to keep the preassignment or explicitly
+unassign it. Unassignment closes the claim and sets the trio's actual
+operational status; the booked load returns to the available stack when
+another trio can meet its requirements and timing, otherwise the broker
+handles the customer commitment. Preassignment has no time-based expiry or
+preference lock cutoff. Safety, qualification, and hours-of-service rules
+remain hard constraints throughout.
 
 ## Availability and capacity priority
 
@@ -549,22 +683,24 @@ reward should encourage dispatchers or drivers to exceed legal limits.
 - Apply hard constraints before preferences: safety/legal eligibility,
   driver-guaranteed rest, load/equipment compatibility, and customer
   commitments define what is feasible. Among feasible choices, the supervisor
-  balances company benefit and area/homeward positioning with system match
-  rankings, dispatcher review/reranking, and driver trip preferences.
+  balances company benefit and area/homeward positioning with dispatcher
+  nominations and driver trip preferences. Automated match rankings may
+  later support this decision, but are not required for Ring 1.
   Preferences help choose; they do not override a hard constraint or make an
   unconfirmed proposal binding.
-- For in-house drivers, the system identifies and ranks feasible load
-  matches; the dispatcher confirms the ordering or reranks based on relevant
-  driver/team knowledge. For managed carriers, use the same matching process
+- For in-house drivers, dispatcher nominations capture relevant driver/team
+  knowledge and priority. The dispatcher does not confirm a supervisor's
+  preassignment. For managed carriers, use the same nomination/preassignment
+  process
   but rank only loads their dedicated dispatcher has marked acceptable for
   that carrier/truck. The pickup-area supervisor makes the final assignment
   across both candidate groups, preferring in-house capacity only when its
   match is close in company benefit; a clearly superior managed-carrier match
   may be assigned when it benefits the company.
-- If multiple in-house trucks remain equally strong after feasibility,
-  company/area priorities, and dispatcher rankings are applied, preconfirm
-  one at random. Random selection resolves an exact tie; it does not bypass
-  the established priorities.
+- If multiple in-house trios remain equally strong after feasibility,
+  company/area priorities, and dispatcher nominations are considered, the
+  supervisor chooses among them. Any tie-breaking policy remains to be
+  defined and must not bypass established priorities.
 - If a contractor declines, release the reservation and return the load to
   sourcing. After delivery, a contractor may not be nominated for a reload
   until the broker selects it from the unassigned pool.

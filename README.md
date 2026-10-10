@@ -24,18 +24,24 @@ and applicable law.
    roles, area accountability, and decision rights.
 3. [Operating workflow](docs/trucking/WORKFLOW.md) — the target load,
    assignment, execution, and capacity model, including later automation.
-4. [TMS architecture](docs/trucking/MVP_ARCHITECTURE.md) — Load, Dispatch,
+4. [System vision and capability rings](docs/trucking/SYSTEM_VISION.md) —
+   business destination, technical topology, and staged capability layers
+   through a production-candidate pilot.
+5. [Core workflow, contracts, and logical schema](docs/trucking/CORE_WORKFLOW.md) —
+   ordered business transitions, service interactions, conceptual ownership,
+   and failure/notification behavior.
+6. [TMS architecture](docs/trucking/MVP_ARCHITECTURE.md) — Load, Dispatch,
    and Execution ownership and service relationships.
-5. [First-slice charter](docs/trucking/MVP_START.md) — the ready-load
+7. [First-slice charter](docs/trucking/MVP_START.md) — the ready-load
    coordination workflow, acceptance scenarios, and deliberate exclusions.
-6. [Decisions and open questions](docs/trucking/OPEN_QUESTIONS.md) — what to
+8. [Decisions and open questions](docs/trucking/OPEN_QUESTIONS.md) — what to
    resolve when implementation reaches it.
-7. [Development roadmap](docs/README_NEXT_STEPS.md) — modeling gates and the
+9. [Development roadmap](docs/README_NEXT_STEPS.md) — modeling gates and the
    sequence from cleanup to later automation.
-8. [Architecture principles](docs/PROJECT_IDEOLOGY.md) and
-   [monorepo conventions](docs/monorepo.md).
-9. [Local development infrastructure](infra/README.md) and
-   [HTTP service contracts](docs/SERVICE_CONTRACT.md).
+10. [Architecture principles](docs/PROJECT_IDEOLOGY.md) and
+    [monorepo conventions](docs/monorepo.md).
+11. [Local development infrastructure](infra/README.md) and
+    [HTTP service contracts](docs/SERVICE_CONTRACT.md).
 
 ## Current state
 
